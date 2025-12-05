@@ -1,17 +1,24 @@
-//
-//  TowerOfBabbleApp.swift
-//  TowerOfBabble
-//
-//  Created by Jordan Duffey on 12/4/25.
-//
-
 import SwiftUI
 
 @main
 struct TowerOfBabbleApp: App {
+    @StateObject private var prayerManager = PrayerManager()
+    @State private var showSplash = true
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if showSplash {
+                SplashView(onComplete: {
+                    print("onComplete called!")
+                    showSplash = false
+                })
+            } else {
+                PrayersListView()
+                    .environmentObject(prayerManager)
+                    .onAppear {
+                        print("PrayersListView appeared!")
+                    }
+            }
         }
     }
 }
