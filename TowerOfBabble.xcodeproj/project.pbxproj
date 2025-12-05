@@ -6,7 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CE99262B2EE357FC003D71CB /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = CE99262A2EE357F5003D71CB /* .gitignore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		CE99262A2EE357F5003D71CB /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		CED8E4BE2EE2455700303161 /* TowerOfBabble.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TowerOfBabble.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -32,6 +37,7 @@
 		CED8E4B52EE2455700303161 = {
 			isa = PBXGroup;
 			children = (
+				CE99262A2EE357F5003D71CB /* .gitignore */,
 				CED8E4C02EE2455700303161 /* TowerOfBabble */,
 				CED8E4BF2EE2455700303161 /* Products */,
 			);
@@ -109,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CE99262B2EE357FC003D71CB /* .gitignore in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -38,8 +38,8 @@
 - [ ] Consider adding a skip button after first launch
 
 ### 1.2 Development Infrastructure
-- [ ] Initialize Git repository
-- [ ] Create GitHub repo (private initially)
+- [x] Initialize Git repository
+- [x] Create GitHub repo (private initially)
 - [ ] Set up .gitignore for Xcode projects
 - [ ] First commit and push
 - [ ] Add README.md with setup instructions
