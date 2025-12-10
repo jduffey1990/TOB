@@ -2,22 +2,34 @@ import SwiftUI
 
 @main
 struct TowerOfBabbleApp: App {
-    @StateObject private var prayerManager = PrayerManager()
     @State private var showSplash = true
+    @State private var isAuthenticated = false
+    
+    init() {
+        // Check if user is already logged in
+        _isAuthenticated = State(initialValue: AuthService.shared.isLoggedIn())
+    }
     
     var body: some Scene {
         WindowGroup {
-            if showSplash {
-                SplashView(onComplete: {
-                    print("onComplete called!")
-                    showSplash = false
-                })
-            } else {
-                PrayersListView()
-                    .environmentObject(prayerManager)
-                    .onAppear {
-                        print("PrayersListView appeared!")
+            ZStack {
+                if showSplash {
+                    SplashView {
+                        withAnimation {
+                            showSplash = false
+                        }
                     }
+                } else {
+                    if isAuthenticated {
+                        PrayersListView()
+                    } else {
+                        AuthView {
+                            withAnimation {
+                                isAuthenticated = true
+                            }
+                        }
+                    }
+                }
             }
         }
     }
