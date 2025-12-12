@@ -1,3 +1,10 @@
+//
+//  TowerOfBabbleApp.swift
+//  TowerOfBabble
+//
+//  Updated to use MainTabView with bottom navigation
+//
+
 import SwiftUI
 
 @main
@@ -21,7 +28,7 @@ struct TowerOfBabbleApp: App {
                     }
                 } else {
                     if isAuthenticated {
-                        PrayersListView()
+                        MainTabView() // NEW: Use tab navigation instead of direct PrayersListView
                     } else {
                         AuthView {
                             withAnimation {
