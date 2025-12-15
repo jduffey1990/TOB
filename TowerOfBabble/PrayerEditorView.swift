@@ -84,11 +84,13 @@ struct PrayerEditorView: View {
             .navigationTitle(prayer == nil ? "New Prayer" : "Edit Prayer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+                if prayer == nil {  // Only show Cancel when creating new
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .disabled(isSaving)
                     }
-                    .disabled(isSaving)
                 }
             }
             .onAppear {

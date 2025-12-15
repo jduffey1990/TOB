@@ -3,26 +3,23 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/11/25.
-//
-//  updated by Jordan Duffey on 12/15/25.
+//  Updated by Jordan Duffey on 12/15/25.
 //
 
 import SwiftUI
 
 struct PrayOnItView: View {
-    @EnvironmentObject var prayerManager: PrayerManager
-    @State private var items: [PrayOnItItem] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @StateObject private var manager = PrayOnItManager()
     @State private var showingAddItem = false
-    @State private var stats: PrayOnItStatsResponse?
+    @State private var editingItem: PrayOnItItem?
+    @State private var showingUpgradeSheet = false
     
     var body: some View {
         NavigationView {
             ZStack {
-                if isLoading && items.isEmpty {
+                if manager.isLoading && manager.items.isEmpty {
                     ProgressView("Loading...")
-                } else if items.isEmpty {
+                } else if manager.items.isEmpty {
                     emptyState
                 } else {
                     itemsList
@@ -34,24 +31,27 @@ struct PrayOnItView: View {
                     Button(action: { showingAddItem = true }) {
                         Image(systemName: "plus")
                     }
-                    .disabled(stats?.items.canCreate == false)
+                    .disabled(!manager.canCreateMoreItems)
                 }
             }
             .sheet(isPresented: $showingAddItem) {
-                AddPrayOnItItemView(onItemAdded: {
-                    loadItems()
-                })
+                AddPrayOnItItemView(manager: manager)
+            }
+            .sheet(item: $editingItem) { item in
+                EditPrayOnItItemView(manager: manager, item: item)
+            }
+            .sheet(isPresented: $showingUpgradeSheet) {
+                PrayOnItUpgradeView()
             }
             .onAppear {
-                loadItems()
-                loadStats()
+                manager.refresh()
             }
-            .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            .alert("Error", isPresented: .constant(manager.errorMessage != nil)) {
                 Button("OK") {
-                    errorMessage = nil
+                    manager.errorMessage = nil
                 }
             } message: {
-                if let error = errorMessage {
+                if let error = manager.errorMessage {
                     Text(error)
                 }
             }
@@ -62,6 +62,48 @@ struct PrayOnItView: View {
     
     private var itemsList: some View {
         List {
+            // Compact counter at top
+            Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(manager.tierDisplayText)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        if !manager.canCreateMoreItems {
+                            Button(action: {
+                                showingUpgradeSheet = true
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.circle.fill")
+                                        .font(.caption)
+                                    Text("Upgrade for more")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Count display
+                    if let limit = manager.limit {
+                        Text("\(manager.currentCount)/\(limit)")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(manager.currentCount >= limit ? .red : .primary)
+                    } else {
+                        Text("\(manager.currentCount)")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
             // Info section
             Section {
                 VStack(alignment: .leading, spacing: 8) {
@@ -81,12 +123,16 @@ struct PrayOnItView: View {
             
             // Grouped by category
             ForEach(PrayOnItItem.Category.allCases, id: \.self) { category in
-                let categoryItems = items.filter { $0.category == category }
+                let categoryItems = manager.items(for: category)
                 
                 if !categoryItems.isEmpty {
                     Section(header: Text(category.displayName)) {
                         ForEach(categoryItems) { item in
                             prayOnItRow(item)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    editingItem = item
+                                }
                         }
                         .onDelete { offsets in
                             deleteItems(at: offsets, in: category)
@@ -94,54 +140,10 @@ struct PrayOnItView: View {
                     }
                 }
             }
-            
-            // Tier limit info
-            if let stats = stats {
-                Section {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.blue)
-                        
-                        if let limit = stats.items.limit {
-                            Text("\(stats.tier.capitalized) tier: \(limit) items max")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("\(stats.tier.capitalized) tier: Unlimited items")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        if let limit = stats.items.limit {
-                            Text("\(stats.items.current)/\(limit)")
-                                .font(.caption)
-                                .foregroundColor(stats.items.current >= limit ? .red : .secondary)
-                        } else {
-                            Text("\(stats.items.current)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    // Upgrade prompt if at limit
-                    if stats.items.canCreate == false {
-                        HStack {
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(.orange)
-                            Text("Upgrade to add more items")
-                                .font(.caption)
-                                .foregroundColor(.orange)
-                        }
-                    }
-                }
-            }
         }
         .listStyle(InsetGroupedListStyle())
         .refreshable {
-            loadItems()
-            loadStats()
+            manager.refresh()
         }
     }
     
@@ -162,13 +164,13 @@ struct PrayOnItView: View {
                         Text("•")
                             .foregroundColor(.secondary)
                     }
-                    Text(prayerFocus)
+                    Text(prayerFocus.displayName)
                         .font(.subheadline)
                         .foregroundColor(.blue)
                 }
             }
             
-            if let notes = item.notes {
+            if let notes = item.notes, !notes.isEmpty {
                 Text(notes)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -208,61 +210,91 @@ struct PrayOnItView: View {
     
     // MARK: - Actions
     
-    private func loadItems() {
-        isLoading = true
-        
-        PrayOnItAPIService.shared.fetchItems { result in
-            DispatchQueue.main.async {
-                isLoading = false
-                
-                switch result {
-                case .success(let itemResponses):
-                    self.items = itemResponses.map { $0.toLocalItem() }
-                    
-                case .failure(let error):
-                    self.errorMessage = error.localizedDescription
-                }
-            }
-        }
-    }
-    
-    private func loadStats() {
-        PrayOnItAPIService.shared.fetchStats { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let statsResponse):
-                    self.stats = statsResponse
-                    
-                case .failure(let error):
-                    print("Failed to load stats: \(error.localizedDescription)")
-                }
-            }
-        }
-    }
-    
     private func deleteItems(at offsets: IndexSet, in category: PrayOnItItem.Category) {
-        let categoryItems = items.filter { $0.category == category }
+        let categoryItems = manager.items(for: category)
         
         for offset in offsets {
             guard let item = categoryItems[safe: offset] else { continue }
-            
-            // Optimistic delete
-            if let index = items.firstIndex(where: { $0.id == item.id }) {
-                items.remove(at: index)
+            manager.deleteItem(item)
+        }
+    }
+}
+
+// MARK: - Upgrade View
+
+struct PrayOnItUpgradeView: View {
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                Spacer()
+                
+                Image(systemName: "list.bullet.clipboard.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.blue)
+                
+                Text("Pray On It Limit Reached")
+                    .font(.system(size: 32, weight: .bold))
+                
+                Text("You've reached your limit. Upgrade to Pro for 50 intention slots or Prayer Warrior for unlimited!")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                
+                VStack(alignment: .leading, spacing: 16) {
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "50 saved prayers")
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "50 Pray On It items (Pro)")
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Unlimited items (Warrior)")
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Cloud sync across devices")
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Premium voice options")
+                }
+                .padding(.horizontal, 40)
+                .padding(.top, 20)
+                
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    Button(action: {
+                        // TODO: Implement actual purchase flow
+                        print("Annual purchase tapped")
+                    }) {
+                        VStack(spacing: 4) {
+                            Text("$9.99/year")
+                                .font(.headline)
+                            Text("Save 50%")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    
+                    Button(action: {
+                        // TODO: Implement actual purchase flow
+                        print("Monthly purchase tapped")
+                    }) {
+                        Text("$1.99/month")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 20)
             }
-            
-            // Call API to delete
-            PrayOnItAPIService.shared.deleteItem(id: item.id.uuidString) { result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success:
-                        // Already removed optimistically
-                        loadStats() // Refresh stats
-                        
-                    case .failure(let error):
-                        self.errorMessage = error.localizedDescription
-                        // Reload to restore deleted item
-                        loadItems()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Close") {
+                        dismiss()
                     }
                 }
             }
@@ -270,19 +302,35 @@ struct PrayOnItView: View {
     }
 }
 
-// MARK: - Add Item View (Placeholder)
+struct FeatureRowOnIt: View {
+    let icon: String
+    let text: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(.blue)
+                .font(.title3)
+            Text(text)
+                .font(.body)
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Add Item View
 
 struct AddPrayOnItItemView: View {
     @Environment(\.dismiss) var dismiss
+    @ObservedObject var manager: PrayOnItManager
+    
     @State private var name = ""
     @State private var selectedCategory: PrayOnItItem.Category = .personal
     @State private var relationship = ""
-    @State private var prayerFocus = ""
+    @State private var selectedPrayerFocus: PrayOnItItem.PrayerFocus?
     @State private var notes = ""
-    @State private var isCreating = false
-    @State private var errorMessage: String?
-    
-    let onItemAdded: () -> Void
+    @State private var showingLimitAlert = false
+    @State private var limitAlertMessage = ""
     
     var body: some View {
         NavigationView {
@@ -302,8 +350,12 @@ struct AddPrayOnItItemView: View {
                     TextField("Relationship (e.g., Mother, Friend)", text: $relationship)
                         .autocapitalization(.words)
                     
-                    TextField("Prayer Focus (e.g., healing, guidance)", text: $prayerFocus)
-                        .autocapitalization(.words)
+                    Picker("Prayer Focus", selection: $selectedPrayerFocus) {
+                        Text("None").tag(nil as PrayOnItItem.PrayerFocus?)
+                        ForEach(PrayOnItItem.PrayerFocus.allCases, id: \.self) { focus in
+                            Text(focus.displayName).tag(focus as PrayOnItItem.PrayerFocus?)
+                        }
+                    }
                     
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...5)
@@ -321,54 +373,141 @@ struct AddPrayOnItItemView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .disabled(isCreating)
+                    .disabled(manager.isLoading)
                 }
                 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         createItem()
                     }
-                    .disabled(name.isEmpty || notes.count > 100 || isCreating)
+                    .disabled(name.isEmpty || notes.count > 100 || manager.isLoading)
                 }
             }
-            .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            .alert("Limit Reached", isPresented: $showingLimitAlert) {
                 Button("OK") {
-                    errorMessage = nil
+                    dismiss()
                 }
             } message: {
-                if let error = errorMessage {
-                    Text(error)
-                }
+                Text(limitAlertMessage)
             }
         }
     }
     
     private func createItem() {
-        isCreating = true
-        
-        PrayOnItAPIService.shared.createItem(
+        manager.addItem(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-            category: selectedCategory.rawValue,
+            category: selectedCategory,
             relationship: relationship.isEmpty ? nil : relationship.trimmingCharacters(in: .whitespacesAndNewlines),
-            prayerFocus: prayerFocus.isEmpty ? nil : prayerFocus.trimmingCharacters(in: .whitespacesAndNewlines),
+            prayerFocus: selectedPrayerFocus,
             notes: notes.isEmpty ? nil : notes.trimmingCharacters(in: .whitespacesAndNewlines)
         ) { result in
-            DispatchQueue.main.async {
-                isCreating = false
+            switch result {
+            case .success:
+                dismiss()
                 
-                switch result {
-                case .success:
-                    onItemAdded()
-                    dismiss()
+            case .failure(let error):
+                if case .limitReached(let message) = error {
+                    limitAlertMessage = message
+                    showingLimitAlert = true
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Edit Item View
+
+struct EditPrayOnItItemView: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var manager: PrayOnItManager
+    let item: PrayOnItItem
+    
+    @State private var name: String
+    @State private var selectedCategory: PrayOnItItem.Category
+    @State private var relationship: String
+    @State private var selectedPrayerFocus: PrayOnItItem.PrayerFocus?
+    @State private var notes: String
+    
+    init(manager: PrayOnItManager, item: PrayOnItItem) {
+        self.manager = manager
+        self.item = item
+        _name = State(initialValue: item.name)
+        _selectedCategory = State(initialValue: item.category)
+        _relationship = State(initialValue: item.relationship ?? "")
+        _selectedPrayerFocus = State(initialValue: item.prayerFocus)
+        _notes = State(initialValue: item.notes ?? "")
+    }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Details") {
+                    TextField("Name", text: $name)
+                        .autocapitalization(.words)
                     
-                case .failure(let error):
-                    if case .limitReached(let message) = error {
-                        // Show upgrade prompt
-                        errorMessage = message
-                    } else {
-                        errorMessage = error.localizedDescription
+                    Picker("Category", selection: $selectedCategory) {
+                        ForEach(PrayOnItItem.Category.allCases, id: \.self) { category in
+                            Text(category.displayName).tag(category)
+                        }
                     }
                 }
+                
+                Section("Optional Details") {
+                    TextField("Relationship (e.g., Mother, Friend)", text: $relationship)
+                        .autocapitalization(.words)
+                    
+                    Picker("Prayer Focus", selection: $selectedPrayerFocus) {
+                        Text("None").tag(nil as PrayOnItItem.PrayerFocus?)
+                        ForEach(PrayOnItItem.PrayerFocus.allCases, id: \.self) { focus in
+                            Text(focus.displayName).tag(focus as PrayOnItItem.PrayerFocus?)
+                        }
+                    }
+                    
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(3...5)
+                        .autocapitalization(.sentences)
+                    
+                    Text("\(notes.count)/100")
+                        .font(.caption)
+                        .foregroundColor(notes.count > 100 ? .red : .secondary)
+                }
+            }
+            .navigationTitle("Edit Intention")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .disabled(manager.isLoading)
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        updateItem()
+                    }
+                    .disabled(name.isEmpty || notes.count > 100 || manager.isLoading)
+                }
+            }
+        }
+    }
+    
+    private func updateItem() {
+        manager.updateItem(
+            item,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            category: selectedCategory,
+            relationship: relationship.isEmpty ? nil : relationship.trimmingCharacters(in: .whitespacesAndNewlines),
+            prayerFocus: selectedPrayerFocus,
+            notes: notes.isEmpty ? nil : notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        ) { result in
+            switch result {
+            case .success:
+                dismiss()
+                
+            case .failure:
+                // Error is already handled by manager
+                break
             }
         }
     }
@@ -387,6 +526,5 @@ extension Array {
 struct PrayOnItView_Previews: PreviewProvider {
     static var previews: some View {
         PrayOnItView()
-            .environmentObject(PrayerManager())
     }
 }

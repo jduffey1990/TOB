@@ -3,7 +3,7 @@
 //  TowerOfBabble
 //
 //  API Service for Pray On It Items
-//
+//  Create by Jordan Duffey 12/15/25
 
 import Foundation
 
@@ -458,13 +458,21 @@ extension PrayOnItItemResponse {
         let userUuid = UUID(uuidString: userId) ?? UUID()
         let categoryEnum = PrayOnItItem.Category(rawValue: category) ?? .other
         
+        // Convert prayer focus string to enum
+        let prayerFocusEnum: PrayOnItItem.PrayerFocus?
+        if let focusString = prayerFocus {
+            prayerFocusEnum = PrayOnItItem.PrayerFocus(rawValue: focusString)
+        } else {
+            prayerFocusEnum = nil
+        }
+        
         return PrayOnItItem(
             id: uuid,
             userId: userUuid,
             name: name,
             category: categoryEnum,
             relationship: relationship,
-            prayerFocus: prayerFocus,
+            prayerFocus: prayerFocusEnum,
             notes: notes,
             createdAt: createdDate,
             updatedAt: updatedDate

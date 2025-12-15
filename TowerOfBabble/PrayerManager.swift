@@ -24,11 +24,12 @@ struct Prayer: Identifiable, Codable {
     }
 }
 
-class PrayerManager: ObservableObject {
+class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var prayers: [Prayer] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var prayerStats: PrayerStatsResponse?
+    @Published var isSpeaking: Bool = false  // Now @Published for reactivity
     
     private let synthesizer = AVSpeechSynthesizer()
     private let apiService = PrayerAPIService.shared
@@ -37,10 +38,32 @@ class PrayerManager: ObservableObject {
     private let prayersKey = "cachedPrayers"
     private let defaults = UserDefaults.standard
     
-    init() {
+    override init() {
+        super.init()
+        synthesizer.delegate = self  // Set delegate to receive callbacks
         loadPrayersFromCache()
         fetchPrayersFromAPI()
         fetchStats()
+    }
+    
+    // MARK: - AVSpeechSynthesizerDelegate
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async {
+            self.isSpeaking = true
+        }
+    }
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async {
+            self.isSpeaking = false
+        }
+    }
+    
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async {
+            self.isSpeaking = false
+        }
     }
     
     // MARK: - Prayer Stats
@@ -224,7 +247,7 @@ class PrayerManager: ObservableObject {
         }
     }
     
-    // MARK: - Text-to-Speech (unchanged)
+    // MARK: - Text-to-Speech
     
     func speakPrayer(_ prayer: Prayer) {
         if synthesizer.isSpeaking {
@@ -240,10 +263,7 @@ class PrayerManager: ObservableObject {
         utterance.rate = 0.5
         
         synthesizer.speak(utterance)
-    }
-    
-    var isSpeaking: Bool {
-        synthesizer.isSpeaking
+        // Note: isSpeaking will be set to true automatically by delegate callback
     }
     
     // MARK: - Local Cache (for offline support)

@@ -3,78 +3,24 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/11/25.
-//
-//  Pre-built prayer templates (MOCKED DATA)
+//  Updated by Jordan Duffey on 12/15/25
+//  Pre-built prayer templates
 //
 
 import SwiftUI
 
 struct DefaultPrayersView: View {
     @EnvironmentObject var prayerManager: PrayerManager
-    @State private var mockTemplates: [MockPrayerTemplate] = [
-        // Christian Traditional
-        MockPrayerTemplate(
-            title: "The Lord's Prayer",
-            text: "Our Father, who art in heaven, hallowed be thy name. Thy kingdom come, thy will be done, on earth as it is in heaven. Give us this day our daily bread, and forgive us our trespasses, as we forgive those who trespass against us. And lead us not into temptation, but deliver us from evil. Amen.",
-            category: "Christian Traditional"
-        ),
-        MockPrayerTemplate(
-            title: "Serenity Prayer",
-            text: "God, grant me the serenity to accept the things I cannot change, courage to change the things I can, and wisdom to know the difference.",
-            category: "Christian Traditional"
-        ),
-        MockPrayerTemplate(
-            title: "Prayer of St. Francis",
-            text: "Lord, make me an instrument of your peace. Where there is hatred, let me sow love; where there is injury, pardon; where there is doubt, faith; where there is despair, hope; where there is darkness, light; and where there is sadness, joy.",
-            category: "Christian Traditional"
-        ),
-        
-        // Catholic
-        MockPrayerTemplate(
-            title: "Hail Mary",
-            text: "Hail Mary, full of grace, the Lord is with thee. Blessed art thou among women, and blessed is the fruit of thy womb, Jesus. Holy Mary, Mother of God, pray for us sinners, now and at the hour of our death. Amen.",
-            category: "Catholic"
-        ),
-        MockPrayerTemplate(
-            title: "Guardian Angel Prayer",
-            text: "Angel of God, my guardian dear, to whom God's love commits me here, ever this day be at my side, to light and guard, to rule and guide. Amen.",
-            category: "Catholic"
-        ),
-        
-        // Celtic/Irish
-        MockPrayerTemplate(
-            title: "Irish Blessing",
-            text: "May the road rise up to meet you. May the wind be always at your back. May the sun shine warm upon your face; the rains fall soft upon your fields and until we meet again, may God hold you in the palm of His hand.",
-            category: "Celtic/Irish"
-        ),
-        
-        // Occasion-based
-        MockPrayerTemplate(
-            title: "Morning Prayer",
-            text: "Dear Lord, as I begin this new day, I ask for Your guidance and strength. Help me to face whatever comes with grace and courage. May my actions reflect Your love today. Amen.",
-            category: "Occasion-based"
-        ),
-        MockPrayerTemplate(
-            title: "Evening Prayer",
-            text: "Gracious God, as this day comes to a close, I thank You for Your blessings and guidance. Forgive me where I have fallen short, and grant me peaceful rest tonight. Amen.",
-            category: "Occasion-based"
-        ),
-        MockPrayerTemplate(
-            title: "Bedtime Prayer",
-            text: "Now I lay me down to sleep, I pray the Lord my soul to keep. Guard me through the silent night, and wake me with the morning light. Amen.",
-            category: "Occasion-based"
-        ),
-    ]
     @State private var searchText = ""
     @State private var selectedCategory: String? = nil
-    @State private var showingPrayerDetail: MockPrayerTemplate? = nil
+    @State private var showingPrayerDetail: PrayerTemplate? = nil
     
     private var categories: [String] {
-        Array(Set(mockTemplates.map { $0.category })).sorted()
+        DefaultPrayers.categories
     }
     
-    private var filteredTemplates: [MockPrayerTemplate] {
-        var filtered = mockTemplates
+    private var filteredTemplates: [PrayerTemplate] {
+        var filtered = DefaultPrayers.all
         
         // Filter by category
         if let category = selectedCategory {
@@ -136,13 +82,6 @@ struct DefaultPrayersView: View {
                 } else {
                     templatesList
                 }
-                
-                // Mock data banner
-                VStack {
-                    Spacer()
-                    mockDataBanner
-                        .padding(.bottom, 80) // Above tab bar
-                }
             }
             .navigationTitle("Prayer Templates")
         }
@@ -201,21 +140,6 @@ struct DefaultPrayersView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
-    private var mockDataBanner: some View {
-        HStack {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
-            Text("Mock data - Backend API coming soon")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(8)
-        .padding(.horizontal)
-    }
 }
 
 // MARK: - Category Chip Component
@@ -242,7 +166,7 @@ struct CategoryChip: View {
 // MARK: - Prayer Detail Sheet
 
 struct PrayerDetailView: View {
-    let template: MockPrayerTemplate
+    let template: PrayerTemplate
     @ObservedObject var prayerManager: PrayerManager
     @Environment(\.dismiss) var dismiss
     @State private var showingSuccess = false
@@ -273,35 +197,15 @@ struct PrayerDetailView: View {
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
                     
-                    // Actions
-                    VStack(spacing: 12) {
-                        Button(action: usePrayer) {
-                            Label("Use This Prayer", systemImage: "plus.circle.fill")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                        }
-                        
-                        Button(action: {
-                            prayerManager.speakPrayer(Prayer(
-                                title: template.title,
-                                text: template.text
-                            ))
-                        }) {
-                            Label(
-                                prayerManager.isSpeaking ? "Stop" : "Preview",
-                                systemImage: prayerManager.isSpeaking ? "stop.circle" : "play.circle"
-                            )
+                    // Add to My Prayers button
+                    Button(action: usePrayer) {
+                        Label("Add to My Prayers", systemImage: "plus.circle.fill")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(prayerManager.isSpeaking ? Color.red : Color.green)
+                            .background(Color.blue)
                             .foregroundColor(.white)
                             .cornerRadius(12)
-                        }
                     }
                 }
                 .padding()
@@ -340,15 +244,6 @@ struct PrayerDetailView: View {
             }
         }
     }
-}
-
-// MARK: - Mock Data Model
-
-struct MockPrayerTemplate: Identifiable {
-    let id = UUID()
-    var title: String
-    var text: String
-    var category: String
 }
 
 // MARK: - Preview

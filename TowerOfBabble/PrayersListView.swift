@@ -2,7 +2,8 @@
 //  PrayersListView.swift
 //  TowerOfBabble
 //
-//  Updated with subscription status card banner
+//  Create by Jordan Duffey 12/11/25
+//  Updated by Jordan Duffey 12/15/25
 //
 
 import SwiftUI
@@ -13,6 +14,19 @@ struct PrayersListView: View {
     @State private var showingLogoutAlert = false
     @State private var showingUpgradeSheet = false
     @State private var upgradeReason: UpgradeReason = .premiumFeature
+    @State private var searchText = ""
+    
+    // Computed property for filtered prayers
+    private var filteredPrayers: [Prayer] {
+        if searchText.isEmpty {
+            return prayerManager.prayers
+        } else {
+            return prayerManager.prayers.filter { prayer in
+                prayer.title.localizedCaseInsensitiveContains(searchText) ||
+                prayer.text.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
     
     var body: some View {
         NavigationView {
@@ -55,6 +69,7 @@ struct PrayersListView: View {
                 prayerManager.refresh()
             }
         }
+        .searchable(text: $searchText, prompt: "Search prayers...")
     }
     
     // MARK: - Subviews
@@ -63,6 +78,8 @@ struct PrayersListView: View {
     private var mainContent: some View {
         if prayerManager.prayers.isEmpty && !prayerManager.isLoading {
             emptyStateView
+        } else if filteredPrayers.isEmpty && !searchText.isEmpty {
+            searchEmptyStateView
         } else {
             prayersListWithCard
         }
@@ -70,25 +87,38 @@ struct PrayersListView: View {
     
     private var prayersListWithCard: some View {
         List {
-            // Subscription status card as first item
-            Section {
-                SubscriptionStatusCard(
-                    stats: prayerManager.prayerStats,
-                    onUpgradeTapped: {
-                        upgradeReason = .prayerLimitReached
-                        showingUpgradeSheet = true
-                    }
-                )
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+            // Subscription status card as first item (only show when not searching)
+            if searchText.isEmpty {
+                Section {
+                    SubscriptionStatusCard(
+                        stats: prayerManager.prayerStats,
+                        onUpgradeTapped: {
+                            upgradeReason = .prayerLimitReached
+                            showingUpgradeSheet = true
+                        }
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
             }
             
             // Prayers section
             Section {
-                ForEach(prayerManager.prayers) { prayer in
-                    prayerRow(prayer)
+                if searchText.isEmpty {
+                    ForEach(prayerManager.prayers) { prayer in
+                        prayerRow(prayer)
+                    }
+                    .onDelete(perform: deletePrayer)
+                } else {
+                    // When searching, show filtered results with highlights
+                    ForEach(filteredPrayers) { prayer in
+                        prayerRow(prayer, highlightSearch: true)
+                    }
                 }
-                .onDelete(perform: deletePrayer)
+            } header: {
+                if !searchText.isEmpty {
+                    Text("\(filteredPrayers.count) result\(filteredPrayers.count == 1 ? "" : "s")")
+                }
             }
         }
         .listStyle(InsetGroupedListStyle())
@@ -113,22 +143,84 @@ struct PrayersListView: View {
         }
     }
     
-    private func prayerRow(_ prayer: Prayer) -> some View {
+    private var searchEmptyStateView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 80))
+                .foregroundColor(.gray.opacity(0.3))
+            
+            Text("No Results")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundColor(.gray)
+            
+            Text("No prayers match '\(searchText)'")
+                .font(.subheadline)
+                .foregroundColor(.gray)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+    }
+    
+    private func prayerRow(_ prayer: Prayer, highlightSearch: Bool = false) -> some View {
         NavigationLink(destination:
             PrayerEditorView(prayer: prayer)
                 .environmentObject(prayerManager)
         ) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(prayer.title)
-                    .font(.headline)
+                if highlightSearch && !searchText.isEmpty {
+                    // Highlight matching text in title
+                    highlightedText(prayer.title, highlight: searchText)
+                        .font(.headline)
+                } else {
+                    Text(prayer.title)
+                        .font(.headline)
+                }
                 
-                Text(prayer.text)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .lineLimit(2)
+                if highlightSearch && !searchText.isEmpty {
+                    // Highlight matching text in body
+                    highlightedText(prayer.text, highlight: searchText)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .lineLimit(2)
+                } else {
+                    Text(prayer.text)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .lineLimit(2)
+                }
             }
             .padding(.vertical, 5)
         }
+    }
+    
+    // Helper to highlight search text
+    private func highlightedText(_ text: String, highlight: String) -> Text {
+        var result = Text("")
+        let parts = text.components(separatedBy: highlight)
+        
+        if parts.count > 1 {
+            for (index, part) in parts.enumerated() {
+                result = result + Text(part)
+                if index < parts.count - 1 {
+                    result = result + Text(highlight).fontWeight(.bold).foregroundColor(.blue)
+                }
+            }
+        } else {
+            // Case-insensitive search
+            let range = text.range(of: highlight, options: .caseInsensitive)
+            if let range = range {
+                let before = String(text[..<range.lowerBound])
+                let match = String(text[range])
+                let after = String(text[range.upperBound...])
+                
+                result = Text(before) + Text(match).fontWeight(.bold).foregroundColor(.blue) + Text(after)
+            } else {
+                result = Text(text)
+            }
+        }
+        
+        return result
     }
     
     private var userMenu: some View {
