@@ -44,6 +44,14 @@ class PrayerManager: ObservableObject {
     }
     
     // MARK: - Prayer Stats
+    var hasAICredits: Bool {
+        // TODO: Phase 3 - Check actual AI credits from backend
+        // For now, return true so flow goes to AI builder
+        return false
+        
+        // Future implementation:
+        // return aiCreditsRemaining > 0
+    }
     
     func fetchStats() {
         apiService.fetchPrayerStats { [weak self] result in

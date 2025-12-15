@@ -13,7 +13,11 @@ import SwiftUI
 struct MainTabView: View {
     @StateObject private var prayerManager = PrayerManager()
     @State private var selectedTab = 3 // Start on "My Prayers" tab
-    @State private var showingAddPrayer = false
+    @State private var showingAddPrayer = false       // AI builder
+    @State private var showingManualEntry = false     // Direct to PrayerEditorView
+    @State private var showingUpgradeSheet = false    // Upgrade prompt
+    @State private var showingOutOfAISheet = false
+    @State private var upgradeReason: UpgradeReason = .premiumFeature
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -50,6 +54,99 @@ struct MainTabView: View {
         }
         .sheet(isPresented: $showingAddPrayer) {
             AddPrayerView()
+                .environmentObject(prayerManager)
+        }
+        .sheet(isPresented: $showingUpgradeSheet) {
+            UpgradePlaceholderView(reason: upgradeReason)
+        }
+        .sheet(isPresented: $showingOutOfAISheet) {
+            NavigationView {
+                VStack(spacing: 24) {
+                    // Icon
+                    Image(systemName: "sparkles.rectangle.stack")
+                        .font(.system(size: 80))
+                        .foregroundColor(.blue.opacity(0.3))
+                    
+                    // Title
+                    Text("Out of AI Generations")
+                        .font(.title)
+                        .fontWeight(.bold)
+                    
+                    // Message
+                    Text("You've used all your AI prayer generations for this month.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    Text("You can still create prayers by typing them manually, or upgrade for more AI generations.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    Spacer()
+                    
+                    // Action buttons
+                    VStack(spacing: 12) {
+                        // Primary: Create Manually
+                        Button(action: {
+                            showingOutOfAISheet = false
+                            // Small delay so sheets don't conflict
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                showingManualEntry = true
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "pencil")
+                                Text("Create Prayer Manually")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                        }
+                        
+                        // Secondary: Upgrade
+                        Button(action: {
+                            showingOutOfAISheet = false
+                            upgradeReason = .aiCreditsExhausted
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                showingUpgradeSheet = true
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "star.fill")
+                                Text("Upgrade for More AI")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .cornerRadius(12)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
+                .padding(.top, 40)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Close") {
+                            showingOutOfAISheet = false
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add sheet for manual entry
+        .sheet(isPresented: $showingManualEntry) {
+            PrayerEditorView(prayer: nil)
                 .environmentObject(prayerManager)
         }
         .ignoresSafeArea(.keyboard) // Prevent tab bar from moving with keyboard
@@ -109,7 +206,18 @@ struct MainTabView: View {
         .overlay(
             // Floating + button
             Button(action: {
-                showingAddPrayer = true
+                if !prayerManager.canCreateMorePrayers {
+                    upgradeReason = .prayerLimitReached  // Set reason
+                    showingUpgradeSheet = true
+                    return
+                }
+                
+                if !prayerManager.hasAICredits {
+                    upgradeReason = .aiCreditsExhausted
+                    showingOutOfAISheet = true
+                } else {
+                    showingAddPrayer = true
+                }
             }) {
                 Image(systemName: "plus")
                     .font(.system(size: 24, weight: .semibold))

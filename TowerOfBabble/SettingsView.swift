@@ -13,6 +13,7 @@ struct SettingsView: View {
     @EnvironmentObject var prayerManager: PrayerManager
     @State private var showingLogoutAlert = false
     @State private var showingUpgradeSheet = false
+    @State private var upgradeReason: UpgradeReason = .premiumFeature
     
     var body: some View {
         NavigationView {
@@ -172,7 +173,7 @@ struct SettingsView: View {
             .listStyle(InsetGroupedListStyle())
             .navigationTitle("Settings")
             .sheet(isPresented: $showingUpgradeSheet) {
-                UpgradePlaceholderView()
+                UpgradePlaceholderView(reason: upgradeReason)
             }
             .alert("Logout", isPresented: $showingLogoutAlert) {
                 Button("Cancel", role: .cancel) { }

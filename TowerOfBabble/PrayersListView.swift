@@ -12,15 +12,13 @@ struct PrayersListView: View {
     @State private var showingNewPrayer = false
     @State private var showingLogoutAlert = false
     @State private var showingUpgradeSheet = false
+    @State private var upgradeReason: UpgradeReason = .premiumFeature
     
     var body: some View {
         NavigationView {
             ZStack {
                 // Main content
                 mainContent
-                
-                // Floating + button
-                floatingAddButton
             }
             .navigationTitle("My Prayers")
             .navigationBarTitleDisplayMode(.large)
@@ -34,7 +32,7 @@ struct PrayersListView: View {
                     .environmentObject(prayerManager)
             }
             .sheet(isPresented: $showingUpgradeSheet) {
-                UpgradePlaceholderView()
+                UpgradePlaceholderView(reason: upgradeReason)
             }
             .alert("Logout", isPresented: $showingLogoutAlert) {
                 Button("Cancel", role: .cancel) { }
@@ -77,6 +75,7 @@ struct PrayersListView: View {
                 SubscriptionStatusCard(
                     stats: prayerManager.prayerStats,
                     onUpgradeTapped: {
+                        upgradeReason = .prayerLimitReached
                         showingUpgradeSheet = true
                     }
                 )
@@ -132,32 +131,6 @@ struct PrayersListView: View {
         }
     }
     
-    private var floatingAddButton: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Button(action: {
-                    if prayerManager.canCreateMorePrayers {
-                        showingNewPrayer = true
-                    } else {
-                        showingUpgradeSheet = true
-                    }
-                }) {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(prayerManager.canCreateMorePrayers ? Color.blue : Color.gray)
-                        .clipShape(Circle())
-                        .shadow(radius: 4)
-                }
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
-            }
-        }
-    }
-    
     private var userMenu: some View {
         Menu {
             userMenuContent
@@ -210,22 +183,31 @@ struct PrayersListView: View {
 
 // MARK: - Upgrade Placeholder View
 
+// Define the enum
+enum UpgradeReason {
+    case prayerLimitReached
+    case aiCreditsExhausted
+    case premiumFeature
+}
+
+// Update UpgradePlaceholderView
 struct UpgradePlaceholderView: View {
     @Environment(\.dismiss) var dismiss
+    let reason: UpgradeReason
     
     var body: some View {
         NavigationView {
             VStack(spacing: 24) {
                 Spacer()
                 
-                Image(systemName: "star.circle.fill")
+                Image(systemName: iconForReason)
                     .font(.system(size: 80))
                     .foregroundColor(.blue)
                 
-                Text("Upgrade to Pro")
+                Text(titleForReason)
                     .font(.system(size: 32, weight: .bold))
                 
-                Text("Get 50 prayer slots, cloud sync, and premium features")
+                Text(messageForReason)
                     .font(.body)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -285,6 +267,41 @@ struct UpgradePlaceholderView: View {
                     }
                 }
             }
+        }
+    }
+    
+    // MARK: - Computed Properties for Dynamic Content
+    
+    private var iconForReason: String {
+        switch reason {
+        case .prayerLimitReached:
+            return "exclamationmark.triangle.fill"
+        case .aiCreditsExhausted:
+            return "sparkles.rectangle.stack"
+        case .premiumFeature:
+            return "star.circle.fill"
+        }
+    }
+    
+    private var titleForReason: String {
+        switch reason {
+        case .prayerLimitReached:
+            return "Prayer Limit Reached"
+        case .aiCreditsExhausted:
+            return "Out of AI Credits"
+        case .premiumFeature:
+            return "Upgrade to Pro"
+        }
+    }
+    
+    private var messageForReason: String {
+        switch reason {
+        case .prayerLimitReached:
+            return "You've reached your limit of 5 prayers. Upgrade to Pro for 50 prayer slots!"
+        case .aiCreditsExhausted:
+            return "You've used all your AI generations. Upgrade for unlimited AI-powered prayers!"
+        case .premiumFeature:
+            return "Get 50 prayer slots, cloud sync, and premium features"
         }
     }
 }
