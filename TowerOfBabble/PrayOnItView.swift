@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct PrayOnItView: View {
-    @StateObject private var manager = PrayOnItManager()
+    @ObservedObject private var manager = PrayOnItManager.shared
     @State private var showingAddItem = false
     @State private var editingItem: PrayOnItItem?
     @State private var showingUpgradeSheet = false

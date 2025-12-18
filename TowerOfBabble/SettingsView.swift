@@ -4,10 +4,14 @@
 //
 //  Created by Jordan Duffey on 12/11/25.
 //
-//  User settings and subscription management
+//  SettingsView.swift
+//  TowerOfBabble
+//
+//  Updated with functional voice and playback settings
 //
 
 import SwiftUI
+import AVFoundation
 
 struct SettingsView: View {
     @EnvironmentObject var prayerManager: PrayerManager
@@ -99,26 +103,28 @@ struct SettingsView: View {
                     }
                 }
                 
-                // Voice Settings
+                // Playback Settings - NOW FUNCTIONAL!
                 Section(header: Text("Playback")) {
-                    HStack {
-                        Image(systemName: "speaker.wave.2")
-                        Text("Voice Selection")
-                        Spacer()
-                        Text("iOS Native")
-                            .foregroundColor(.secondary)
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.gray)
+                    // Voice Selection
+                    NavigationLink(destination: VoiceSelectionView()) {
+                        HStack {
+                            Image(systemName: "speaker.wave.2")
+                            Text("Voice Selection")
+                            Spacer()
+                            Text(getCurrentVoiceName())
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
-                    HStack {
-                        Image(systemName: "speedometer")
-                        Text("Playback Speed")
-                        Spacer()
-                        Text("Normal")
-                            .foregroundColor(.secondary)
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.gray)
+                    // Playback Speed
+                    NavigationLink(destination: PlaybackSpeedView()) {
+                        HStack {
+                            Image(systemName: "speedometer")
+                            Text("Playback Speed")
+                            Spacer()
+                            Text(formatPlaybackSpeed())
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 
@@ -232,6 +238,32 @@ struct SettingsView: View {
         .padding(.vertical, 4)
     }
     
+    // MARK: - Helper Methods
+    
+    private func getCurrentVoiceName() -> String {
+        let voiceIndex = prayerManager.settings.voiceIndex
+        let voices = prayerManager.getAvailableVoices()
+        
+        guard voiceIndex < voices.count else {
+            return "Default"
+        }
+        
+        return voices[voiceIndex].name
+    }
+    
+    private func formatPlaybackSpeed() -> String {
+        let rate = prayerManager.settings.playbackRate
+        
+        switch rate {
+        case 0.3: return "Slow"
+        case 0.4: return "Slower"
+        case 0.5: return "Normal"
+        case 0.6: return "Faster"
+        case 0.7: return "Fast"
+        default: return String(format: "%.1fx", rate)
+        }
+    }
+    
     private var tierName: String {
         guard let stats = prayerManager.prayerStats else { return "Loading..." }
         switch stats.tier.lowercased() {
@@ -277,7 +309,7 @@ struct SettingsView: View {
     // MARK: - Actions
     
     private func logout() {
-        AuthService.shared.logout()
+        AuthManager.shared.logout()
         exit(0)
     }
 }
@@ -287,6 +319,6 @@ struct SettingsView: View {
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SettingsView()
-            .environmentObject(PrayerManager())
+            .environmentObject(PrayerManager.shared)
     }
 }

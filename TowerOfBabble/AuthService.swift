@@ -12,15 +12,16 @@ struct User: Codable {
     let email: String
     let name: String
     let status: String
-    let companyId: String?
+    let subscriptionTier: String
+    let subscriptionExpiresAt: String?
+    let settings: UserSettings  // ✅ FIXED: Properly typed
     let createdAt: String
     let updatedAt: String
     
     enum CodingKeys: String, CodingKey {
-        case id, email, name, status
-        case companyId = "companyId"
-        case createdAt = "createdAt"
-        case updatedAt = "updatedAt"
+        case id, email, name, status, settings, createdAt, updatedAt
+        case subscriptionTier = "subscriptionTier"
+        case subscriptionExpiresAt = "subscriptionExpiresAt"
     }
 }
 
@@ -94,7 +95,6 @@ class AuthService {
             }
             
             print("🔵 Status code: \(httpResponse.statusCode)")
-
             
             guard let data = data else {
                 print("❌ No data received")
@@ -103,9 +103,9 @@ class AuthService {
             }
             
             print("🔵 Data received: \(data.count) bytes")
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    print("🔵 Response body: \(jsonString)")
-                }
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔵 Response body: \(jsonString)")
+            }
             
             // Handle different status codes
             switch httpResponse.statusCode {
@@ -113,9 +113,13 @@ class AuthService {
                 do {
                     print("🔵 200 OK - attempting to decode")
                     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
+                    print("✅ Successfully decoded user with settings: voice=\(loginResponse.user.settings.voiceIndex), rate=\(loginResponse.user.settings.playbackRate)")
                     completion(.success(loginResponse))
                 } catch {
-                    print("Decoding error: \(error)")
+                    print("❌ Decoding error: \(error)")
+                    if let decodingError = error as? DecodingError {
+                        print("❌ Detailed decoding error: \(decodingError)")
+                    }
                     completion(.failure(.decodingError))
                 }
                 
@@ -187,7 +191,7 @@ class AuthService {
                     let user = try JSONDecoder().decode(User.self, from: data)
                     completion(.success(user))
                 } catch {
-                    print("Decoding error: \(error)")
+                    print("❌ Decoding error: \(error)")
                     if let jsonString = String(data: data, encoding: .utf8) {
                         print("Response: \(jsonString)")
                     }
@@ -224,13 +228,6 @@ class AuthService {
         return UserDefaults.standard.string(forKey: "authToken") != nil
     }
     
-    func logout() {
-        UserDefaults.standard.removeObject(forKey: "authToken")
-        UserDefaults.standard.removeObject(forKey: "userId")
-        UserDefaults.standard.removeObject(forKey: "userEmail")
-        UserDefaults.standard.removeObject(forKey: "userName")
-    }
-    
     func getCurrentUser() -> User? {
         guard let id = UserDefaults.standard.string(forKey: "userId"),
               let email = UserDefaults.standard.string(forKey: "userEmail"),
@@ -238,14 +235,36 @@ class AuthService {
             return nil
         }
         
+        // Optional fields with defaults (outside the guard)
+        let status = UserDefaults.standard.string(forKey: "userStatus") ?? "active" // ✅ Works here
+        let tier = UserDefaults.standard.string(forKey: "userTier") ?? "free"
+
+        // Load settings from PrayerManager singleton
+        let settings = PrayerManager.shared.settings
+        
         return User(
             id: id,
             email: email,
             name: name,
-            status: "active",
-            companyId: nil,
-            createdAt: "",
-            updatedAt: ""
+            status: status,
+            subscriptionTier: tier,
+            subscriptionExpiresAt: UserDefaults.standard.string(forKey: "userSubscriptionExpiresAt"),
+            settings: settings,
+            createdAt: UserDefaults.standard.string(forKey: "userCreatedAt") ?? "",
+            updatedAt: UserDefaults.standard.string(forKey: "userUpdatedAt") ?? ""
         )
+    }
+    
+    func logout() {
+        // Clear all user data
+        UserDefaults.standard.removeObject(forKey: "authToken")
+        UserDefaults.standard.removeObject(forKey: "userId")
+        UserDefaults.standard.removeObject(forKey: "userEmail")
+        UserDefaults.standard.removeObject(forKey: "userName")
+        UserDefaults.standard.removeObject(forKey: "userStatus")
+        UserDefaults.standard.removeObject(forKey: "userTier")
+        UserDefaults.standard.removeObject(forKey: "userSubscriptionExpiresAt")
+        UserDefaults.standard.removeObject(forKey: "userCreatedAt")
+        UserDefaults.standard.removeObject(forKey: "userUpdatedAt")
     }
 }

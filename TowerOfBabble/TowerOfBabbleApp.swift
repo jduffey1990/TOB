@@ -9,35 +9,79 @@ import SwiftUI
 
 @main
 struct TowerOfBabbleApp: App {
-    @State private var showSplash = true
-    @State private var isAuthenticated = false
+    // ✅ Observe the singleton AuthManager
+    @StateObject private var authManager = AuthManager.shared
     
-    init() {
-        // Check if user is already logged in
-        _isAuthenticated = State(initialValue: AuthService.shared.isLoggedIn())
-    }
+    // ✅ Keep your splash screen animation
+    @State private var showSplash = true
     
     var body: some Scene {
         WindowGroup {
             ZStack {
                 if showSplash {
+                    // Show splash screen first
                     SplashView {
                         withAnimation {
                             showSplash = false
                         }
                     }
                 } else {
-                    if isAuthenticated {
-                        MainTabView() // NEW: Use tab navigation instead of direct PrayersListView
+                    // After splash, show main app or login based on auth state
+                    if authManager.isAuthenticated {
+                        MainTabView()
+                            .transition(.opacity)
                     } else {
-                        AuthView {
-                            withAnimation {
-                                isAuthenticated = true
-                            }
-                        }
+                        AuthView(onAuthSuccess: {
+                            // Auth state automatically updates via @Published
+                            // No need to manually set isAuthenticated
+                        })
+                        .transition(.opacity)
                     }
                 }
+            }
+            .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
+            .onReceive(NotificationCenter.default.publisher(for: .sessionExpired)) { _ in
+                // Optional: Show alert when session expires
+                print("⚠️ Session expired - user logged out")
+                // Could show an alert here if desired
             }
         }
     }
 }
+
+
+//struct TowerOfBabbleApp: App {
+//    @State private var showSplash = true
+//    @State private var isAuthenticated = false
+//    
+//    init() {
+//        // Check if user is already logged in
+//        _isAuthenticated = State(initialValue: AuthService.shared.isLoggedIn())
+//    }
+//    
+//    var body: some Scene {
+//        WindowGroup {
+//            ZStack {
+//                if showSplash {
+//                    SplashView {
+//                        withAnimation {
+//                            showSplash = false
+//                        }
+//                    }
+//                } else {
+//                    if isAuthenticated {
+//                        MainTabView() // NEW: Use tab navigation instead of direct PrayersListView
+//                    } else {
+//                        AuthView {
+//                            withAnimation {
+//                                isAuthenticated = true
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+//}
+
+

@@ -3,34 +3,47 @@
 //  TowerOfBabble
 //
 //  Updated to use backend API instead of UserDefaults
+//  Converted to singleton pattern for shared state across views
+//  INCLUDES settings management for voice and playback
 //
 
 import Foundation
 import AVFoundation
 import Combine
 
-// Model for a single prayer (local representation)
+// MARK: - Prayer Model (matches backend)
 struct Prayer: Identifiable, Codable {
-    let id: UUID
+    let id: String  // ✅ String ID from backend (no UUID conversion)
+    let userId: String
     var title: String
     var text: String
-    var createdAt: Date
+    let category: String?
+    let isTemplate: Bool
+    let playCount: Int
+    let lastPlayedAt: String?
+    let createdAt: String
+    let updatedAt: String
+    let deletedAt: String?
     
-    init(id: UUID = UUID(), title: String, text: String, createdAt: Date = Date()) {
-        self.id = id
-        self.title = title
-        self.text = text
-        self.createdAt = createdAt
+    // Helper to get createdAt as Date for UI sorting if needed
+    var createdDate: Date {
+        ISO8601DateFormatter().date(from: createdAt) ?? Date()
     }
 }
 
 class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+    // MARK: - Singleton
+    static let shared = PrayerManager()
+    
+    // MARK: - Published Properties
     @Published var prayers: [Prayer] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var prayerStats: PrayerStatsResponse?
-    @Published var isSpeaking: Bool = false  // Now @Published for reactivity
+    @Published var isSpeaking: Bool = false
+    @Published var settings: UserSettings = .defaultSettings
     
+    // MARK: - Private Properties
     private let synthesizer = AVSpeechSynthesizer()
     private let apiService = PrayerAPIService.shared
     
@@ -38,9 +51,11 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private let prayersKey = "cachedPrayers"
     private let defaults = UserDefaults.standard
     
-    override init() {
+    // MARK: - Initialization
+    private override init() {
         super.init()
-        synthesizer.delegate = self  // Set delegate to receive callbacks
+        synthesizer.delegate = self
+        loadSettings()
         loadPrayersFromCache()
         fetchPrayersFromAPI()
         fetchStats()
@@ -66,14 +81,36 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
     
+    // MARK: - Settings Management
+    
+    func loadSettings() {
+        if let data = defaults.data(forKey: "userSettings"),
+           let decoded = try? JSONDecoder().decode(UserSettings.self, from: data) {
+            self.settings = decoded
+            print("💾 Loaded saved settings: voice=\(decoded.voiceIndex), rate=\(decoded.playbackRate)")
+        } else {
+            print("💾 No saved settings found, using defaults")
+        }
+    }
+    
+    func saveSettings() {
+        if let encoded = try? JSONEncoder().encode(settings) {
+            defaults.set(encoded, forKey: "userSettings")
+            print("💾 Saved settings: voice=\(settings.voiceIndex), rate=\(settings.playbackRate)")
+        }
+    }
+    
+    func getAvailableVoices() -> [AVSpeechSynthesisVoice] {
+        let voices = AVSpeechSynthesisVoice.speechVoices().filter { voice in
+            voice.language.hasPrefix("en-")
+        }
+        return voices
+    }
+    
     // MARK: - Prayer Stats
+    
     var hasAICredits: Bool {
-        // TODO: Phase 3 - Check actual AI credits from backend
-        // For now, return true so flow goes to AI builder
         return false
-        
-        // Future implementation:
-        // return aiCreditsRemaining > 0
     }
     
     func fetchStats() {
@@ -105,7 +142,7 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     
     var canCreateMorePrayers: Bool {
         guard let stats = prayerStats else {
-            return true // Assume yes if we don't have stats yet
+            return true
         }
         return stats.prayers.canCreate
     }
@@ -121,17 +158,15 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let prayerResponses):
-                    let localPrayers = prayerResponses.map { $0.toLocalPrayer() }
-                    self?.prayers = localPrayers
+                case .success(let prayers):
+                    self?.prayers = prayers  // ✅ No conversion needed!
                     self?.savePrayersToCache()
-                    print("✅ Loaded \(localPrayers.count) prayers from API")
+                    print("✅ Loaded \(prayers.count) prayers from API")
                     
                 case .failure(let error):
                     self?.errorMessage = error.localizedDescription
                     print("❌ Failed to fetch prayers: \(error.localizedDescription)")
                     
-                    // If network fails, we still have cached prayers loaded
                     if self?.prayers.isEmpty == true {
                         self?.loadPrayersFromCache()
                     }
@@ -142,20 +177,19 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     
     // MARK: - Create Prayer
     
-    func addPrayer(_ prayer: Prayer, completion: ((Result<Prayer, PrayerAPIError>) -> Void)? = nil) {
+    func addPrayer(title: String, text: String, completion: ((Result<Prayer, PrayerAPIError>) -> Void)? = nil) {
         isLoading = true
         errorMessage = nil
         
-        apiService.createPrayer(title: prayer.title, text: prayer.text) { [weak self] result in
+        apiService.createPrayer(title: title, text: text) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let prayerResponse):
-                    let newPrayer = prayerResponse.toLocalPrayer()
+                case .success(let newPrayer):
                     self?.prayers.append(newPrayer)
                     self?.savePrayersToCache()
-                    self?.fetchStats() // Refresh stats after creating
+                    self?.fetchStats()
                     print("✅ Prayer created")
                     completion?(.success(newPrayer))
                     
@@ -163,9 +197,8 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                     self?.errorMessage = error.localizedDescription
                     print("❌ Failed to create prayer: \(error.localizedDescription)")
                     
-                    // Special handling for limit reached
                     if case .limitReached = error {
-                        self?.fetchStats() // Refresh stats to show accurate limits
+                        self?.fetchStats()
                     }
                     
                     completion?(.failure(error))
@@ -176,12 +209,12 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     
     // MARK: - Update Prayer
     
-    func updatePrayer(_ prayer: Prayer) {
+    func updatePrayer(_ prayer: Prayer, completion: ((Result<Prayer, PrayerAPIError>) -> Void)? = nil) {
         isLoading = true
         errorMessage = nil
         
         apiService.updatePrayer(
-            id: prayer.id.uuidString,
+            id: prayer.id,  // ✅ Already a String!
             title: prayer.title,
             text: prayer.text,
             category: nil
@@ -190,17 +223,18 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let prayerResponse):
-                    let updatedPrayer = prayerResponse.toLocalPrayer()
+                case .success(let updatedPrayer):
                     if let index = self?.prayers.firstIndex(where: { $0.id == prayer.id }) {
                         self?.prayers[index] = updatedPrayer
                         self?.savePrayersToCache()
                         print("✅ Prayer updated")
                     }
+                    completion?(.success(updatedPrayer))
                     
                 case .failure(let error):
                     self?.errorMessage = error.localizedDescription
                     print("❌ Failed to update prayer: \(error.localizedDescription)")
+                    completion?(.failure(error))
                 }
             }
         }
@@ -208,11 +242,11 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     
     // MARK: - Delete Prayer
     
-    func deletePrayer(_ prayer: Prayer) {
+    func deletePrayer(_ prayer: Prayer, completion: ((Result<Void, PrayerAPIError>) -> Void)? = nil) {
         isLoading = true
         errorMessage = nil
         
-        apiService.deletePrayer(id: prayer.id.uuidString) { [weak self] result in
+        apiService.deletePrayer(id: prayer.id) { [weak self] result in  // ✅ Already a String!
             DispatchQueue.main.async {
                 self?.isLoading = false
                 
@@ -220,12 +254,14 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                 case .success:
                     self?.prayers.removeAll { $0.id == prayer.id }
                     self?.savePrayersToCache()
-                    self?.fetchStats() // Refresh stats after deleting
+                    self?.fetchStats()
                     print("✅ Prayer deleted")
+                    completion?(.success(()))
                     
                 case .failure(let error):
                     self?.errorMessage = error.localizedDescription
                     print("❌ Failed to delete prayer: \(error.localizedDescription)")
+                    completion?(.failure(error))
                 }
             }
         }
@@ -234,39 +270,65 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // MARK: - Record Playback
     
     func recordPlayback(_ prayer: Prayer) {
-        // Don't show loading for playback recording (it's a background operation)
-        apiService.recordPlayback(id: prayer.id.uuidString) { result in
+        print("🎙️ Recording playback for prayer: \(prayer.id)")
+        apiService.recordPlayback(id: prayer.id) { result in  // ✅ Already a String!
             switch result {
             case .success:
                 print("✅ Playback recorded")
                 
             case .failure(let error):
                 print("⚠️ Failed to record playback: \(error.localizedDescription)")
-                // Don't show error to user - this is not critical
             }
         }
     }
     
     // MARK: - Text-to-Speech
     
+    // ✅ For playing saved prayers (records playback)
     func speakPrayer(_ prayer: Prayer) {
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
             return
         }
         
-        // Record playback in background
+        // Only record playback for saved prayers
         recordPlayback(prayer)
         
         let utterance = AVSpeechUtterance(string: prayer.text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        utterance.rate = 0.5
+        
+        let voices = getAvailableVoices()
+        if settings.voiceIndex < voices.count {
+            utterance.voice = voices[settings.voiceIndex]
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        }
+        
+        utterance.rate = Float(settings.playbackRate)
         
         synthesizer.speak(utterance)
-        // Note: isSpeaking will be set to true automatically by delegate callback
     }
     
-    // MARK: - Local Cache (for offline support)
+    //For previewing text without a saved prayer (no playback recording)
+    func speakText(_ text: String) {
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+            return
+        }
+        
+        let utterance = AVSpeechUtterance(string: text)
+        
+        let voices = getAvailableVoices()
+        if settings.voiceIndex < voices.count {
+            utterance.voice = voices[settings.voiceIndex]
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        }
+        
+        utterance.rate = Float(settings.playbackRate)
+        
+        synthesizer.speak(utterance)
+    }
+    // MARK: - Local Cache
     
     private func savePrayersToCache() {
         if let encoded = try? JSONEncoder().encode(prayers) {
@@ -290,3 +352,9 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         fetchStats()
     }
 }
+
+
+
+
+
+

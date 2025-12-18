@@ -2,27 +2,16 @@
 //  PrayOnItAPIService.swift
 //  TowerOfBabble
 //
-//  API Service for Pray On It Items
-//  Create by Jordan Duffey 12/15/25
+//  Created by Jordan Duffey on 12/15/25
+//  Updated by Claude on 12/17/25 - Added AuthManager integration
+//
 
 import Foundation
 
 // MARK: - API Models
 
-struct PrayOnItItemResponse: Codable {
-    let id: String
-    let userId: String
-    let name: String
-    let category: String
-    let relationship: String?
-    let prayerFocus: String?
-    let notes: String?
-    let createdAt: String
-    let updatedAt: String
-}
-
 struct PrayOnItItemsListResponse: Codable {
-    let items: [PrayOnItItemResponse]
+    let items: [PrayOnItItem]
     let count: Int
 }
 
@@ -79,7 +68,8 @@ class PrayOnItAPIService {
     // MARK: - Helper: Create Authorized Request
     
     private func createAuthorizedRequest(url: URL, method: String = "GET") -> URLRequest? {
-        guard let token = UserDefaults.standard.string(forKey: "authToken") else {
+        // ✅ Get token from AuthManager instead of UserDefaults
+        guard let token = AuthManager.shared.getToken() else {
             print("❌ No auth token found")
             return nil
         }
@@ -92,15 +82,26 @@ class PrayOnItAPIService {
         return request
     }
     
+    // MARK: - Helper: Handle HTTP Response with 401 Detection
+    
+    private func handle401IfNeeded(_ statusCode: Int) {
+        if statusCode == 401 {
+            print("⚠️ 401 Unauthorized - token expired")
+            DispatchQueue.main.async {
+                AuthManager.shared.handleTokenExpired()
+            }
+        }
+    }
+    
     // MARK: - Fetch All Items
     
-    func fetchItems(completion: @escaping (Result<[PrayOnItItemResponse], PrayOnItAPIError>) -> Void) {
+    func fetchItems(completion: @escaping (Result<[PrayOnItItem], PrayOnItAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/pray-on-it") else {
             completion(.failure(.networkError("Invalid URL")))
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url) else {
+        guard let request = createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -125,6 +126,9 @@ class PrayOnItAPIService {
             }
             
             print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
             
             switch httpResponse.statusCode {
             case 200:
@@ -156,7 +160,7 @@ class PrayOnItAPIService {
     
     // MARK: - Create Item
     
-    func createItem(name: String, category: String, relationship: String? = nil, prayerFocus: String? = nil, notes: String? = nil, completion: @escaping (Result<PrayOnItItemResponse, PrayOnItAPIError>) -> Void) {
+    func createItem(name: String, category: String, relationship: String? = nil, prayerFocus: String? = nil, notes: String? = nil, completion: @escaping (Result<PrayOnItItem, PrayOnItAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/pray-on-it") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -210,10 +214,13 @@ class PrayOnItAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
             switch httpResponse.statusCode {
             case 201:
                 do {
-                    let item = try JSONDecoder().decode(PrayOnItItemResponse.self, from: data)
+                    let item = try JSONDecoder().decode(PrayOnItItem.self, from: data)
                     print("✅ Pray-on-it item created: \(item.id)")
                     completion(.success(item))
                 } catch {
@@ -249,7 +256,7 @@ class PrayOnItAPIService {
     
     // MARK: - Update Item
     
-    func updateItem(id: String, name: String? = nil, category: String? = nil, relationship: String? = nil, prayerFocus: String? = nil, notes: String? = nil, completion: @escaping (Result<PrayOnItItemResponse, PrayOnItAPIError>) -> Void) {
+    func updateItem(id: String, name: String? = nil, category: String? = nil, relationship: String? = nil, prayerFocus: String? = nil, notes: String? = nil, completion: @escaping (Result<PrayOnItItem, PrayOnItAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/pray-on-it/\(id)") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -301,14 +308,20 @@ class PrayOnItAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
             switch httpResponse.statusCode {
             case 200:
                 do {
-                    let item = try JSONDecoder().decode(PrayOnItItemResponse.self, from: data)
+                    let item = try JSONDecoder().decode(PrayOnItItem.self, from: data)
                     print("✅ Pray-on-it item updated: \(item.id)")
                     completion(.success(item))
                 } catch {
                     print("❌ Decoding error: \(error)")
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print("Response: \(jsonString)")
+                    }
                     completion(.failure(.decodingError))
                 }
                 
@@ -337,7 +350,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "DELETE") else {
+        guard let request = createAuthorizedRequest(url: url, method: "DELETE") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -357,6 +370,9 @@ class PrayOnItAPIService {
             }
             
             print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
             
             switch httpResponse.statusCode {
             case 200:
@@ -389,7 +405,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url) else {
+        guard let request = createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -414,6 +430,9 @@ class PrayOnItAPIService {
             }
             
             print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
             
             switch httpResponse.statusCode {
             case 200:
@@ -441,41 +460,5 @@ class PrayOnItAPIService {
                 }
             }
         }.resume()
-    }
-}
-
-// MARK: - Helper: Convert API Response to Local Model
-
-extension PrayOnItItemResponse {
-    func toLocalItem() -> PrayOnItItem {
-        // Parse the ISO date string from the API
-        let dateFormatter = ISO8601DateFormatter()
-        let createdDate = dateFormatter.date(from: createdAt) ?? Date()
-        let updatedDate = dateFormatter.date(from: updatedAt) ?? Date()
-        
-        // Convert UUID string to UUID
-        let uuid = UUID(uuidString: id) ?? UUID()
-        let userUuid = UUID(uuidString: userId) ?? UUID()
-        let categoryEnum = PrayOnItItem.Category(rawValue: category) ?? .other
-        
-        // Convert prayer focus string to enum
-        let prayerFocusEnum: PrayOnItItem.PrayerFocus?
-        if let focusString = prayerFocus {
-            prayerFocusEnum = PrayOnItItem.PrayerFocus(rawValue: focusString)
-        } else {
-            prayerFocusEnum = nil
-        }
-        
-        return PrayOnItItem(
-            id: uuid,
-            userId: userUuid,
-            name: name,
-            category: categoryEnum,
-            relationship: relationship,
-            prayerFocus: prayerFocusEnum,
-            notes: notes,
-            createdAt: createdDate,
-            updatedAt: updatedDate
-        )
     }
 }

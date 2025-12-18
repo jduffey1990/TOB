@@ -226,14 +226,9 @@ struct AuthView: View {
                 
                 switch result {
                 case .success(let response):
-                    // Save token and user data
-                    UserDefaults.standard.set(response.token, forKey: "authToken")
-                    UserDefaults.standard.set(response.user.id, forKey: "userId")
-                    UserDefaults.standard.set(response.user.email, forKey: "userEmail")
-                    UserDefaults.standard.set(response.user.name, forKey: "userName")
-                    
-                    print("Login successful: \(response.user.name)")
-                    onAuthSuccess()
+                    // ✅ NEW: Use AuthManager
+                       AuthManager.shared.login(token: response.token, user: response.user)
+                       onAuthSuccess()
                     
                 case .failure(let error):
                     handleError(error)

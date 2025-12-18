@@ -11,7 +11,7 @@ import Foundation
 // MARK: - Data Model
 
 struct PrayerTemplate: Identifiable {
-    let id = UUID()
+    let id: String = UUID().uuidString 
     var title: String
     var text: String
     var category: String
@@ -582,3 +582,10 @@ struct DefaultPrayers {
         Array(Set(all.map { $0.category })).sorted()
     }
 }
+
+
+
+
+
+
+

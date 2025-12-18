@@ -3,6 +3,8 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/15/25.
+//  Updateed by Jordan Duffey on 12/17/25.
+//  Converted to singleton pattern for shared state across views
 //
 
 import Foundation
@@ -10,15 +12,15 @@ import Combine
 
 // Model for a single pray-on-it item (local representation)
 struct PrayOnItItem: Identifiable, Codable {
-    let id: UUID
-    let userId: UUID
+    let id: String
+    let userId: String
     var name: String
     var category: Category
     var relationship: String?
     var prayerFocus: PrayerFocus?
     var notes: String?
-    let createdAt: Date
-    let updatedAt: Date
+    let createdAt: String
+    let updatedAt: String
     
     enum Category: String, Codable, CaseIterable {
         case family = "family"
@@ -55,18 +57,24 @@ struct PrayOnItItem: Identifiable, Codable {
 }
 
 class PrayOnItManager: ObservableObject {
+    // MARK: - Singleton
+    static let shared = PrayOnItManager()
+    
+    // MARK: - Published Properties
     @Published var items: [PrayOnItItem] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var stats: PrayOnItStatsResponse?
     
+    // MARK: - Private Properties
     private let apiService = PrayOnItAPIService.shared
     
     // Local cache key for offline support
     private let itemsKey = "cachedPrayOnItItems"
     private let defaults = UserDefaults.standard
     
-    init() {
+    // MARK: - Initialization
+    private init() {
         loadItemsFromCache()
         fetchItemsFromAPI()
         fetchStats()
@@ -141,11 +149,10 @@ class PrayOnItManager: ObservableObject {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let itemResponses):
-                    let localItems = itemResponses.map { $0.toLocalItem() }
-                    self?.items = localItems
+                case .success(let items):
+                    self?.items = items
                     self?.saveItemsToCache()
-                    print("✅ Loaded \(localItems.count) pray-on-it items from API")
+                    print("✅ Loaded \(items.count) pray-on-it items from API")
                     
                 case .failure(let error):
                     self?.errorMessage = error.localizedDescription
@@ -184,8 +191,8 @@ class PrayOnItManager: ObservableObject {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let itemResponse):
-                    let newItem = itemResponse.toLocalItem()
+                case .success(let items):
+                    let newItem = items
                     self?.items.append(newItem)
                     self?.saveItemsToCache()
                     self?.fetchStats() // Immediately refresh stats
@@ -222,7 +229,7 @@ class PrayOnItManager: ObservableObject {
         errorMessage = nil
         
         apiService.updateItem(
-            id: item.id.uuidString,
+            id: item.id,
             name: name,
             category: category?.rawValue,
             relationship: relationship,
@@ -233,8 +240,8 @@ class PrayOnItManager: ObservableObject {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let itemResponse):
-                    let updatedItem = itemResponse.toLocalItem()
+                case .success(let item):
+                    let updatedItem = item
                     if let index = self?.items.firstIndex(where: { $0.id == item.id }) {
                         self?.items[index] = updatedItem
                         self?.saveItemsToCache()
@@ -257,7 +264,7 @@ class PrayOnItManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        apiService.deleteItem(id: item.id.uuidString) { [weak self] result in
+        apiService.deleteItem(id: item.id) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false
                 

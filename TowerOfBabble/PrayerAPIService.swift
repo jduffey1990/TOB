@@ -3,42 +3,14 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/11/25.
+//  Updated by Claude on 12/17/25 - Added AuthManager integration
 //
 
 import Foundation
 
 // MARK: - API Models
-
-struct PrayerResponse: Codable {
-    let id: String
-    let userId: String
-    let title: String
-    let text: String
-    let category: String?
-    let isTemplate: Bool
-    let playCount: Int
-    let lastPlayedAt: String?
-    let createdAt: String
-    let updatedAt: String
-    let deletedAt: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case id
-        case userId
-        case title
-        case text
-        case category
-        case isTemplate
-        case playCount
-        case lastPlayedAt
-        case createdAt
-        case updatedAt
-        case deletedAt
-    }
-}
-
 struct PrayersListResponse: Codable {
-    let prayers: [PrayerResponse]
+    let prayers: [Prayer]
     let count: Int
 }
 
@@ -97,7 +69,8 @@ class PrayerAPIService {
     // MARK: - Helper: Create Authorized Request
     
     private func createAuthorizedRequest(url: URL, method: String = "GET") -> URLRequest? {
-        guard let token = UserDefaults.standard.string(forKey: "authToken") else {
+        // ✅ Get token from AuthManager instead of UserDefaults
+        guard let token = AuthManager.shared.getToken() else {
             print("❌ No auth token found")
             return nil
         }
@@ -110,15 +83,26 @@ class PrayerAPIService {
         return request
     }
     
+    // MARK: - Helper: Handle HTTP Response with 401 Detection
+    
+    private func handle401IfNeeded(_ statusCode: Int) {
+        if statusCode == 401 {
+            print("⚠️ 401 Unauthorized - token expired")
+            DispatchQueue.main.async {
+                AuthManager.shared.handleTokenExpired()
+            }
+        }
+    }
+    
     // MARK: - Fetch All Prayers
     
-    func fetchPrayers(completion: @escaping (Result<[PrayerResponse], PrayerAPIError>) -> Void) {
+    func fetchPrayers(completion: @escaping (Result<[Prayer], PrayerAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/prayers") else {
             completion(.failure(.networkError("Invalid URL")))
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url) else {
+        guard let request = createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -144,11 +128,25 @@ class PrayerAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
             switch httpResponse.statusCode {
             case 200:
                 do {
+                    // Add this to see the raw JSON
+                   if let jsonString = String(data: data, encoding: .utf8) {
+                       print("📦 Raw JSON response from /prayers:")
+                       print(jsonString.prefix(500)) // First 500 chars
+                   }
                     let listResponse = try JSONDecoder().decode(PrayersListResponse.self, from: data)
                     print("✅ Fetched \(listResponse.prayers.count) prayers")
+                    
+                    // Add this to see what IDs we got
+                    for prayer in listResponse.prayers {
+                        print("   Prayer: id=\(prayer.id), title=\(prayer.title)")
+                    }
+                    
                     completion(.success(listResponse.prayers))
                 } catch {
                     print("❌ Decoding error: \(error)")
@@ -174,7 +172,7 @@ class PrayerAPIService {
     
     // MARK: - Create Prayer
     
-    func createPrayer(title: String, text: String, category: String? = nil, completion: @escaping (Result<PrayerResponse, PrayerAPIError>) -> Void) {
+    func createPrayer(title: String, text: String, category: String? = nil, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/prayers") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -219,10 +217,13 @@ class PrayerAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
             switch httpResponse.statusCode {
             case 201:
                 do {
-                    let prayer = try JSONDecoder().decode(PrayerResponse.self, from: data)
+                    let prayer = try JSONDecoder().decode(Prayer.self, from: data)
                     print("✅ Prayer created: \(prayer.id)")
                     completion(.success(prayer))
                 } catch {
@@ -258,7 +259,7 @@ class PrayerAPIService {
     
     // MARK: - Update Prayer
     
-    func updatePrayer(id: String, title: String?, text: String?, category: String?, completion: @escaping (Result<PrayerResponse, PrayerAPIError>) -> Void) {
+    func updatePrayer(id: String, title: String?, text: String?, category: String?, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/prayers/\(id)") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -302,10 +303,13 @@ class PrayerAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
             switch httpResponse.statusCode {
             case 200:
                 do {
-                    let prayer = try JSONDecoder().decode(PrayerResponse.self, from: data)
+                    let prayer = try JSONDecoder().decode(Prayer.self, from: data)
                     print("✅ Prayer updated: \(prayer.id)")
                     completion(.success(prayer))
                 } catch {
@@ -338,7 +342,7 @@ class PrayerAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "DELETE") else {
+        guard let request = createAuthorizedRequest(url: url, method: "DELETE") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -358,6 +362,9 @@ class PrayerAPIService {
             }
             
             print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
             
             switch httpResponse.statusCode {
             case 200:
@@ -384,13 +391,13 @@ class PrayerAPIService {
     
     // MARK: - Record Playback
     
-    func recordPlayback(id: String, completion: @escaping (Result<PrayerResponse, PrayerAPIError>) -> Void) {
+    func recordPlayback(id: String, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/prayers/\(id)/play") else {
             completion(.failure(.networkError("Invalid URL")))
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "POST") else {
+        guard let request = createAuthorizedRequest(url: url, method: "POST") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -416,10 +423,13 @@ class PrayerAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
             switch httpResponse.statusCode {
             case 200:
                 do {
-                    let prayer = try JSONDecoder().decode(PrayerResponse.self, from: data)
+                    let prayer = try JSONDecoder().decode(Prayer.self, from: data)
                     print("✅ Playback recorded for prayer: \(prayer.id)")
                     completion(.success(prayer))
                 } catch {
@@ -452,7 +462,7 @@ class PrayerAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url) else {
+        guard let request = createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -477,6 +487,9 @@ class PrayerAPIService {
             }
             
             print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            // ✅ Handle 401 globally
+            self.handle401IfNeeded(httpResponse.statusCode)
             
             switch httpResponse.statusCode {
             case 200:
@@ -504,25 +517,5 @@ class PrayerAPIService {
                 }
             }
         }.resume()
-    }
-}
-
-// MARK: - Helper: Convert API Response to Local Prayer Model
-
-extension PrayerResponse {
-    func toLocalPrayer() -> Prayer {
-        // Parse the ISO date string from the API
-        let dateFormatter = ISO8601DateFormatter()
-        let createdDate = dateFormatter.date(from: createdAt) ?? Date()
-        
-        // Convert UUID string to UUID
-        let uuid = UUID(uuidString: id) ?? UUID()
-        
-        return Prayer(
-            id: uuid,
-            title: title,
-            text: text,
-            createdAt: createdDate
-        )
     }
 }

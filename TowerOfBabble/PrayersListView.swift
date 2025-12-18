@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct PrayersListView: View {
-    @StateObject private var prayerManager = PrayerManager()
+    @ObservedObject private var prayerManager = PrayerManager.shared
     @State private var showingNewPrayer = false
     @State private var showingLogoutAlert = false
     @State private var showingUpgradeSheet = false
@@ -262,13 +262,18 @@ struct PrayersListView: View {
     private func deletePrayer(at offsets: IndexSet) {
         for index in offsets {
             let prayer = prayerManager.prayers[index]
-            prayerManager.deletePrayer(prayer)
+            prayerManager.deletePrayer(prayer) { result in
+                // Only show alert if delete actually failed
+                if case .failure(let error) = result {
+                    // Could show an alert here if you want
+                    print("Failed to delete: \(error.localizedDescription)")
+                }
+            }
         }
     }
     
     private func logout() {
-        AuthService.shared.logout()
-        // Force quit to restart authentication flow
+        AuthManager.shared.logout()        // Force quit to restart authentication flow
         exit(0)
     }
 }

@@ -325,9 +325,8 @@ struct AddPrayerView: View {
     
     private func savePrayer() {
         let title = "\(prayerType.rawValue) Prayer"
-        let prayer = Prayer(title: title, text: generatedPrayer)
         
-        prayerManager.addPrayer(prayer) { result in
+        prayerManager.addPrayer(title: title, text: generatedPrayer) { result in
             switch result {
             case .success:
                 dismiss()
@@ -427,6 +426,6 @@ enum PrayerTone: String, CaseIterable {
 struct AddPrayerView_Previews: PreviewProvider {
     static var previews: some View {
         AddPrayerView()
-            .environmentObject(PrayerManager())
+            .environmentObject(PrayerManager.shared)
     }
 }

@@ -230,11 +230,8 @@ struct PrayerDetailView: View {
     }
     
     private func usePrayer() {
-        let newPrayer = Prayer(
-            title: template.title,
-            text: template.text
-        )
-        prayerManager.addPrayer(newPrayer) { result in
+
+        prayerManager.addPrayer(title: template.title,text: template.text) { result in
             switch result {
             case .success:
                 showingSuccess = true
@@ -251,6 +248,6 @@ struct PrayerDetailView: View {
 struct DefaultPrayersView_Previews: PreviewProvider {
     static var previews: some View {
         DefaultPrayersView()
-            .environmentObject(PrayerManager())
+            .environmentObject(PrayerManager.shared)
     }
 }

@@ -115,30 +115,28 @@ struct PrayerEditorView: View {
         isSaving = true
         
         if let existingPrayer = prayer {
-            // Update existing
-            let updated = Prayer(
-                id: existingPrayer.id,
-                title: title,
-                text: text,
-                createdAt: existingPrayer.createdAt
-            )
-            prayerManager.updatePrayer(updated)
+            // Update existing - modify the copy
+            var updatedPrayer = existingPrayer
+            updatedPrayer.title = title
+            updatedPrayer.text = text
             
-            // Wait a moment for the API call to complete
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                isSaving = false
-                if prayerManager.errorMessage == nil {
-                    dismiss()
-                } else {
-                    errorMessage = prayerManager.errorMessage ?? "Failed to save prayer"
-                    showingError = true
-                    prayerManager.errorMessage = nil
+            prayerManager.updatePrayer(updatedPrayer) { result in
+                DispatchQueue.main.async {
+                    isSaving = false
+                    
+                    switch result {
+                    case .success:
+                        dismiss()
+                        
+                    case .failure(let error):
+                        errorMessage = error.localizedDescription
+                        showingError = true
+                    }
                 }
             }
         } else {
-            // Create new
-            let newPrayer = Prayer(title: title, text: text)
-            prayerManager.addPrayer(newPrayer) { result in
+            // Create new - use title and text only
+            prayerManager.addPrayer(title: title, text: text) { result in
                 DispatchQueue.main.async {
                     isSaving = false
                     
@@ -154,9 +152,14 @@ struct PrayerEditorView: View {
             }
         }
     }
-    
     private func playPrayer() {
-        let tempPrayer = Prayer(title: title, text: text)
-        prayerManager.speakPrayer(tempPrayer)
+        if let existingPrayer = prayer {
+            // Editing existing prayer - play the saved one (records playback)
+            prayerManager.speakPrayer(existingPrayer)
+        } else {
+            // New prayer not yet saved - just preview the text (no playback recording)
+            prayerManager.speakText(text)
+        }
     }
+
 }
