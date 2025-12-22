@@ -114,7 +114,7 @@ struct PrayOnItView: View {
                             .font(.headline)
                     }
                     
-                    Text("Add people, situations, and intentions here. When you create a prayer with AI, it can pull from this list to personalize your prayer.")
+                    Text("Add common prayer themes here. When you create a prayer with AI, it can pull from this list to personalize your prayer.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }

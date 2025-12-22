@@ -100,17 +100,83 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
     
-    func getAvailableVoices() -> [AVSpeechSynthesisVoice] {
-        let voices = AVSpeechSynthesisVoice.speechVoices().filter { voice in
-            voice.language.hasPrefix("en-")
-        }
-        return voices
+    func getAvailableVoices() -> [String] {
+        let sortedAppleVoices = self.getAppleVoices()
+        let sortedGoogleVoices = self.getGoogleVoices()
+        let sortedSpeechifyVoices = self.getSpeechifyVoices()
+        print("this should return voices for the app to use in TTS")
     }
+    
+    func getAppleVoices() -> [AVSpeechSynthesisVoice] {
+            let allVoices = AVSpeechSynthesisVoice.speechVoices()
+            
+            // Allowlist of known high-quality voices
+            // This is more reliable than trying to exclude bad ones
+            let allowedVoiceNames = [
+                // US English - High Quality
+                "Samantha",    // Natural female (Enhanced)
+                "Moira",       // Irish female (Enhanced)
+                "Daniel",      // British male (Enhanced)
+            ]
+            
+            let voices = allVoices.filter { voice in
+                // Must be English
+                guard voice.language.hasPrefix("en-") else { return false }
+                
+                // Must be in our allowlist
+                return allowedVoiceNames.contains(voice.name)
+            }
+            
+            // Sort by quality (enhanced/premium first) and then by name
+            let sortedVoices = voices.sorted { voice1, voice2 in
+                // Enhanced quality voices first
+                if voice1.quality != voice2.quality {
+                    return voice1.quality.rawValue > voice2.quality.rawValue
+                }
+                // Then sort alphabetically by name
+                return voice1.name < voice2.name
+            }
+            
+            // Debug: Print available voices
+            print("📢 Available Voices (\(sortedVoices.count)):")
+            for (index, voice) in sortedVoices.enumerated() {
+                let qualityString: String
+                switch voice.quality {
+                case .default:
+                    qualityString = "Default"
+                case .enhanced:
+                    qualityString = "Enhanced ⭐"
+                case .premium:
+                    qualityString = "Premium ⭐⭐"
+                @unknown default:
+                    qualityString = "Unknown"
+                }
+                print("  [\(index)] \(voice.name) (\(voice.language)) - \(qualityString)")
+            }
+            
+            // Fallback: if allowlist results in no voices, return all English enhanced voices
+            if sortedVoices.isEmpty {
+                print("⚠️ No allowlisted voices found, falling back to enhanced voices")
+                return allVoices.filter { voice in
+                    voice.language.hasPrefix("en-") && voice.quality == .enhanced
+                }.sorted { $0.name < $1.name }
+            }
+            
+            return sortedVoices
+        }
+    
+    func getGoogleVoices() -> [String] {
+        print("this here is to get the voices from google voices that are supposedly of higher quality than apple's")    }
+    
+    func getSpeechifyVoices() -> [String] {
+        print("this here is to get the speechify voices")
+    }
+        
     
     // MARK: - Prayer Stats
     
     var hasAICredits: Bool {
-        return false
+        return true
     }
     
     func fetchStats() {
@@ -201,6 +267,66 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
                         self?.fetchStats()
                     }
                     
+                    completion?(.failure(error))
+                }
+            }
+        }
+    }
+    
+    func postPrompt(
+        _ requestPayload: [String: Any],
+        completion: ((Result<String, PrayerAPIError>) -> Void)? = nil
+    ) {
+        print("\n🟦 [PrayerManager] postPrompt called")
+        print("   Payload keys: \(requestPayload.keys.joined(separator: ", "))")
+        
+        // Log payload details
+        if let items = requestPayload["prayOnItItems"] as? [[String: Any]] {
+            print("   📋 Pray On It Items: \(items.count)")
+            items.forEach { item in
+                if let name = item["name"] as? String {
+                    print("      - \(name)")
+                }
+            }
+        }
+        
+        if let type = requestPayload["prayerType"] as? String {
+            print("   🙏 Prayer Type: \(type)")
+        }
+        
+        if let tone = requestPayload["tone"] as? String {
+            print("   🎵 Tone: \(tone)")
+        }
+        
+        if let length = requestPayload["length"] as? String {
+            print("   ⏱️  Length: \(length)")
+        }
+        
+        if let expansiveness = requestPayload["expansiveness"] as? String {
+            print("   📝 Expansiveness: \(expansiveness)")
+        }
+        
+        if let context = requestPayload["customContext"], !(context is NSNull) {
+            print("   💬 Has custom context: Yes")
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        apiService.createPrompt(requestPayload) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                
+                switch result {
+                case .success(let generatedText):
+                    print("✅ [PrayerManager] Prompt returned successfully")
+                    print("   Generated text length: \(generatedText.count) characters")
+                    print("   Preview: \(String(generatedText.prefix(100)))...")
+                    completion?(.success(generatedText))
+                    
+                case .failure(let error):
+                    print("❌ [PrayerManager] Prompt failed: \(error)")
+                    self?.errorMessage = error.localizedDescription
                     completion?(.failure(error))
                 }
             }

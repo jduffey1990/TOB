@@ -12,6 +12,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @ObservedObject private var prayerManager = PrayerManager.shared
+    @ObservedObject private var prayOnItManager = PrayOnItManager.shared
     @State private var selectedTab = 3 // Start on "My Prayers" tab
     @State private var showingAddPrayer = false       // AI builder
     @State private var showingManualEntry = false     // Direct to PrayerEditorView
@@ -45,6 +46,7 @@ struct MainTabView: View {
                 // Tab 5: Settings
                 SettingsView()
                     .environmentObject(prayerManager)
+                    .environmentObject(prayOnItManager) 
                     .tag(5)
             }
             .tabViewStyle(.automatic)
@@ -55,6 +57,7 @@ struct MainTabView: View {
         .sheet(isPresented: $showingAddPrayer) {
             AddPrayerView()
                 .environmentObject(prayerManager)
+                .environmentObject(prayOnItManager) 
         }
         .sheet(isPresented: $showingUpgradeSheet) {
             UpgradePlaceholderView(reason: upgradeReason)

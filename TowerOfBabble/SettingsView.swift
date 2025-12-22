@@ -15,6 +15,7 @@ import AVFoundation
 
 struct SettingsView: View {
     @EnvironmentObject var prayerManager: PrayerManager
+    @EnvironmentObject var prayOnItManager: PrayOnItManager
     @State private var showingLogoutAlert = false
     @State private var showingUpgradeSheet = false
     @State private var upgradeReason: UpgradeReason = .premiumFeature
@@ -72,7 +73,7 @@ struct SettingsView: View {
                             Spacer()
                             if let limit = stats.prayers.limit {
                                 Text("\(stats.prayers.current)/\(limit)")
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(stats.prayers.current >= limit ? .red : .secondary)
                             } else {
                                 Text("\(stats.prayers.current)")
                                     .foregroundColor(.secondary)
@@ -91,8 +92,13 @@ struct SettingsView: View {
                             Image(systemName: "list.bullet.clipboard")
                             Text("Pray On It Items")
                             Spacer()
-                            Text("Coming Soon")
-                                .foregroundColor(.secondary)
+                            if let limit = prayOnItManager.limit {
+                                Text("\(prayOnItManager.currentCount)/\(limit)")
+                                    .foregroundColor(prayOnItManager.currentCount >= limit ? .red : .secondary)
+                            } else {
+                                Text("\(prayOnItManager.currentCount)")
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     } else {
                         HStack {
