@@ -530,16 +530,8 @@ struct AddPrayerView: View {
     // MARK: - Helper Functions
     
     private func estimatedReadingTime(for length: PrayerLength) -> String {
-        // Get playback rate from PrayerManager (iOS native: 0.0-1.0 where 0.5 = normal speed)
-        // Default to 0.5 (1x normal speed) if not set
-        let playbackRate = prayerManager.settings.playbackRate
-        
-        // Convert iOS rate to speed multiplier
-        // iOS: 0.5 = 1x, 0.25 = 0.5x, 1.0 = 2x
-        let speedMultiplier = playbackRate / 0.5
-        
         // Average speaking rate: ~150 words per minute at 1x speed
-        let wordsPerMinute = 150.0 * speedMultiplier
+        let wordsPerMinute = 150.0 
         
         let estimatedWords = Double(length.estimatedWordCount)
         let minutes = estimatedWords / wordsPerMinute

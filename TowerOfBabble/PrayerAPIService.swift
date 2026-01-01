@@ -57,6 +57,26 @@ enum PrayerAPIError: Error {
     }
 }
 
+struct GenerateAudioRequest: Codable {
+    let voiceId: String
+}
+
+struct GenerateAudioResponse: Codable {
+    let success: Bool
+    let audioData: String  // Base64 encoded
+    let audioFormat: String
+    let voiceUsed: String
+    let provider: String
+    let metadata: AudioMetadata
+    
+    struct AudioMetadata: Codable {
+        let characterCount: Int
+        let estimatedCost: Double
+        let generatedAt: String
+        let responseTimeMs: Int
+    }
+}
+
 // MARK: - Prayer API Service
 
 class PrayerAPIService {
@@ -645,8 +665,164 @@ class PrayerAPIService {
         }.resume()
     }
     
-    // MARK: - Record Playback
     
+    // MARK: - Fetch Available Voices
+
+    func fetchVoices(completion: @escaping (Result<VoicesResponse, PrayerAPIError>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/voices") else {
+            completion(.failure(.networkError("Invalid URL")))
+            return
+        }
+        
+        guard let request = createAuthorizedRequest(url: url) else {
+            completion(.failure(.unauthorized))
+            return
+        }
+        
+        print("🔵 Fetching available voices")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ Network error: \(error.localizedDescription)")
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.unknown))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(.networkError("No data received")))
+                return
+            }
+            
+            print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
+            switch httpResponse.statusCode {
+            case 200:
+                do {
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print("📦 Raw voices response:")
+                        print(jsonString.prefix(500))
+                    }
+                    
+                    let voicesResponse = try JSONDecoder().decode(VoicesResponse.self, from: data)
+                    print("✅ Fetched \(voicesResponse.availableVoices.count) available voices")
+                    print("   User tier: \(voicesResponse.userTier)")
+                    completion(.success(voicesResponse))
+                } catch {
+                    print("❌ Decoding error: \(error)")
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        print("Response: \(jsonString)")
+                    }
+                    completion(.failure(.decodingError))
+                }
+                
+            case 401:
+                completion(.failure(.unauthorized))
+                
+            default:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["error"] as? String {
+                    completion(.failure(.serverError(message)))
+                } else {
+                    completion(.failure(.serverError("Server error: \(httpResponse.statusCode)")))
+                }
+            }
+        }.resume()
+    }
+
+    // MARK: - Generate Audio for Prayer
+
+    func generateAudio(prayerId: String, voiceId: String, completion: @escaping (Result<GenerateAudioResponse, PrayerAPIError>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/prayers/\(prayerId)/generate-audio") else {
+            completion(.failure(.networkError("Invalid URL")))
+            return
+        }
+        
+        guard var request = createAuthorizedRequest(url: url, method: "POST") else {
+            completion(.failure(.unauthorized))
+            return
+        }
+        
+        let body: [String: Any] = ["voiceId": voiceId]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+        
+        print("🔵 Generating audio for prayer: \(prayerId)")
+        print("   Voice: \(voiceId)")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ Network error: \(error.localizedDescription)")
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.unknown))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(.networkError("No data received")))
+                return
+            }
+            
+            print("🔵 Response status: \(httpResponse.statusCode)")
+            
+            self.handle401IfNeeded(httpResponse.statusCode)
+            
+            switch httpResponse.statusCode {
+            case 200:
+                do {
+                    let audioResponse = try JSONDecoder().decode(GenerateAudioResponse.self, from: data)
+                    print("✅ Audio generated successfully")
+                    print("   Provider: \(audioResponse.provider)")
+                    print("   Voice: \(audioResponse.voiceUsed)")
+                    print("   Size: \(audioResponse.audioData.count) bytes (base64)")
+                    completion(.success(audioResponse))
+                } catch {
+                    print("❌ Decoding error: \(error)")
+                    completion(.failure(.decodingError))
+                }
+                
+            case 401:
+                completion(.failure(.unauthorized))
+                
+            case 403:
+                // Voice tier not available
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.failure(.serverError("Upgrade required: \(message)")))
+                } else {
+                    completion(.failure(.serverError("This voice requires a higher subscription tier")))
+                }
+                
+            case 404:
+                completion(.failure(.notFound))
+                
+            default:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["error"] as? String {
+                    completion(.failure(.serverError(message)))
+                } else {
+                    completion(.failure(.serverError("Server error: \(httpResponse.statusCode)")))
+                }
+            }
+        }.resume()
+    }
+    
+    // MARK: - Record Playback
     func recordPlayback(id: String, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/prayers/\(id)/play") else {
             completion(.failure(.networkError("Invalid URL")))

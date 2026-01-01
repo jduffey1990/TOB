@@ -99,7 +99,6 @@ class AuthManager: ObservableObject {
         self.isAuthenticated = true
         
         print("✅ User logged in: \(user.email)")
-        print("✅ Loaded settings: voice=\(user.settings.voiceIndex), rate=\(user.settings.playbackRate)")
     }
     
     /// Clear all authentication data and cached content

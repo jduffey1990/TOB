@@ -98,7 +98,7 @@ class SettingsAPIService {
                     let decoder = JSONDecoder()
                     decoder.keyDecodingStrategy = .convertFromSnakeCase
                     let settings = try decoder.decode(UserSettings.self, from: data)
-                    print("✅ Fetched settings: voice=\(settings.voiceIndex), rate=\(settings.playbackRate)")
+                    print("✅ Fetched settings: voice=\(settings.voiceIndex)")
                     completion(.success(settings))
                 } catch {
                     print("❌ Decoding error: \(error)")
@@ -124,7 +124,7 @@ class SettingsAPIService {
     
     // MARK: - Update Settings
     
-    func updateSettings(voiceIndex: Int? = nil, playbackRate: Double? = nil, completion: @escaping (Result<User, SettingsAPIError>) -> Void) {
+    func updateSettings(voiceIndex: Int? = nil, completion: @escaping (Result<User, SettingsAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/users/me/settings") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -139,9 +139,6 @@ class SettingsAPIService {
         var payload: [String: Any] = [:]
         if let voiceIndex = voiceIndex {
             payload["voiceIndex"] = voiceIndex
-        }
-        if let playbackRate = playbackRate {
-            payload["playbackRate"] = playbackRate
         }
         
         guard !payload.isEmpty else {

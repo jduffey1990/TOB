@@ -113,7 +113,6 @@ class AuthService {
                 do {
                     print("🔵 200 OK - attempting to decode")
                     let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
-                    print("✅ Successfully decoded user with settings: voice=\(loginResponse.user.settings.voiceIndex), rate=\(loginResponse.user.settings.playbackRate)")
                     completion(.success(loginResponse))
                 } catch {
                     print("❌ Decoding error: \(error)")

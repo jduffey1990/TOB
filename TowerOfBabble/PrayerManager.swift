@@ -31,6 +31,28 @@ struct Prayer: Identifiable, Codable {
     }
 }
 
+struct VoiceOption: Codable {
+    let id: String
+    let name: String
+    let language: String
+    let gender: String
+    let description: String
+    let tier: String
+    let provider: String  // "apple", "azure", "fishaudio"
+}
+
+struct VoicesResponse: Codable {
+    let userTier: String
+    let availableVoices: [VoiceOption]
+    let allVoices: [VoiceOption]
+    let count: VoiceCount
+}
+
+struct VoiceCount: Codable {
+    let available: Int
+    let total: Int
+}
+
 class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     // MARK: - Singleton
     static let shared = PrayerManager()
@@ -42,9 +64,13 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published var prayerStats: PrayerStatsResponse?
     @Published var isSpeaking: Bool = false
     @Published var settings: UserSettings = .defaultSettings
+    @Published var availableVoices: [VoiceOption] = []
+    @Published var allVoices: [VoiceOption] = []
+    @Published var userTier: String = "free"
     
     // MARK: - Private Properties
     private let synthesizer = AVSpeechSynthesizer()
+    private var audioPlayer: AVAudioPlayer?
     private let apiService = PrayerAPIService.shared
     
     // Local cache key for offline support
@@ -59,7 +85,9 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         loadPrayersFromCache()
         fetchPrayersFromAPI()
         fetchStats()
+        fetchAvailableVoices()
     }
+
     
     // MARK: - AVSpeechSynthesizerDelegate
     
@@ -87,7 +115,7 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         if let data = defaults.data(forKey: "userSettings"),
            let decoded = try? JSONDecoder().decode(UserSettings.self, from: data) {
             self.settings = decoded
-            print("💾 Loaded saved settings: voice=\(decoded.voiceIndex), rate=\(decoded.playbackRate)")
+            print("💾 Loaded saved settings: voice=\(decoded.voiceIndex)")
         } else {
             print("💾 No saved settings found, using defaults")
         }
@@ -96,80 +124,95 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     func saveSettings() {
         if let encoded = try? JSONEncoder().encode(settings) {
             defaults.set(encoded, forKey: "userSettings")
-            print("💾 Saved settings: voice=\(settings.voiceIndex), rate=\(settings.playbackRate)")
         }
     }
     
+    /// Fetch available voices from backend
+    func fetchAvailableVoices(completion: ((Result<VoicesResponse, PrayerAPIError>) -> Void)? = nil) {
+        apiService.fetchVoices { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let voicesResponse):
+                    self?.availableVoices = voicesResponse.availableVoices
+                    self?.allVoices = voicesResponse.allVoices
+                    self?.userTier = voicesResponse.userTier
+                    print("✅ Fetched \(voicesResponse.availableVoices.count)/\(voicesResponse.allVoices.count) voices")
+                    print("   User tier: \(voicesResponse.userTier)")
+                    completion?(.success(voicesResponse))
+                    
+                case .failure(let error):
+                    print("❌ Failed to fetch voices: \(error)")
+                    completion?(.failure(error))
+                }
+            }
+        }
+    }
+
+    /// Get available voices for UI picker (returns display names)
     func getAvailableVoices() -> [String] {
-        let sortedAppleVoices = self.getAppleVoices()
-        let sortedGoogleVoices = self.getGoogleVoices()
-        let sortedSpeechifyVoices = self.getSpeechifyVoices()
-        print("this should return voices for the app to use in TTS")
+        return availableVoices.map { voice in
+            "\(voice.name) (\(voice.provider.capitalized))"
+        }
     }
     
-    func getAppleVoices() -> [AVSpeechSynthesisVoice] {
-            let allVoices = AVSpeechSynthesisVoice.speechVoices()
-            
-            // Allowlist of known high-quality voices
-            // This is more reliable than trying to exclude bad ones
-            let allowedVoiceNames = [
-                // US English - High Quality
-                "Samantha",    // Natural female (Enhanced)
-                "Moira",       // Irish female (Enhanced)
-                "Daniel",      // British male (Enhanced)
-            ]
-            
-            let voices = allVoices.filter { voice in
-                // Must be English
-                guard voice.language.hasPrefix("en-") else { return false }
-                
-                // Must be in our allowlist
-                return allowedVoiceNames.contains(voice.name)
-            }
-            
-            // Sort by quality (enhanced/premium first) and then by name
-            let sortedVoices = voices.sorted { voice1, voice2 in
-                // Enhanced quality voices first
-                if voice1.quality != voice2.quality {
-                    return voice1.quality.rawValue > voice2.quality.rawValue
-                }
-                // Then sort alphabetically by name
-                return voice1.name < voice2.name
-            }
-            
-            // Debug: Print available voices
-            print("📢 Available Voices (\(sortedVoices.count)):")
-            for (index, voice) in sortedVoices.enumerated() {
-                let qualityString: String
-                switch voice.quality {
-                case .default:
-                    qualityString = "Default"
-                case .enhanced:
-                    qualityString = "Enhanced ⭐"
-                case .premium:
-                    qualityString = "Premium ⭐⭐"
-                @unknown default:
-                    qualityString = "Unknown"
-                }
-                print("  [\(index)] \(voice.name) (\(voice.language)) - \(qualityString)")
-            }
-            
-            // Fallback: if allowlist results in no voices, return all English enhanced voices
-            if sortedVoices.isEmpty {
-                print("⚠️ No allowlisted voices found, falling back to enhanced voices")
-                return allVoices.filter { voice in
-                    voice.language.hasPrefix("en-") && voice.quality == .enhanced
-                }.sorted { $0.name < $1.name }
-            }
-            
-            return sortedVoices
+    /// Get a specific voice by index
+    func getVoiceByIndex(_ index: Int) -> VoiceOption? {
+        guard index >= 0 && index < availableVoices.count else {
+            return nil
         }
+        return availableVoices[index]
+    }
+
     
-    func getGoogleVoices() -> [String] {
-        print("this here is to get the voices from google voices that are supposedly of higher quality than apple's")    }
+    /// Check if a voice is locked (requires upgrade)
+    func isVoiceLocked(_ voice: VoiceOption) -> Bool {
+        return !availableVoices.contains(where: { $0.id == voice.id })
+    }
     
-    func getSpeechifyVoices() -> [String] {
-        print("this here is to get the speechify voices")
+    
+    /// Get Apple-specific voices for local TTS
+    private func getAppleVoices() -> [AVSpeechSynthesisVoice] {
+        let allVoices = AVSpeechSynthesisVoice.speechVoices()
+        
+        // Allowlist of known high-quality voices
+        let allowedVoiceNames = [
+            "Samantha",    // Natural female (Enhanced)
+            "Moira",       // Irish female (Enhanced)
+            "Daniel",      // British male (Enhanced)
+        ]
+        
+        let voices = allVoices.filter { voice in
+            guard voice.language.hasPrefix("en-") else { return false }
+            return allowedVoiceNames.contains(voice.name)
+        }
+        
+        let sortedVoices = voices.sorted { voice1, voice2 in
+            if voice1.quality != voice2.quality {
+                return voice1.quality.rawValue > voice2.quality.rawValue
+            }
+            return voice1.name < voice2.name
+        }
+        
+        print("📢 Available Apple Voices (\(sortedVoices.count)):")
+        for (index, voice) in sortedVoices.enumerated() {
+            let qualityString: String
+            switch voice.quality {
+            case .default: qualityString = "Default"
+            case .enhanced: qualityString = "Enhanced ⭐"
+            case .premium: qualityString = "Premium ⭐⭐"
+            @unknown default: qualityString = "Unknown"
+            }
+            print("  [\(index)] \(voice.name) (\(voice.language)) - \(qualityString)")
+        }
+        
+        if sortedVoices.isEmpty {
+            print("⚠️ No allowlisted voices found, falling back to enhanced voices")
+            return allVoices.filter { voice in
+                voice.language.hasPrefix("en-") && voice.quality == .enhanced
+            }.sorted { $0.name < $1.name }
+        }
+        
+        return sortedVoices
     }
         
     
@@ -408,52 +451,179 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
         }
     }
     
-    // MARK: - Text-to-Speech
     
-    // ✅ For playing saved prayers (records playback)
+    // MARK: - Text-to-Speech (UPDATED)
+
+    /// Play a saved prayer (routes to appropriate TTS provider)
     func speakPrayer(_ prayer: Prayer) {
-        if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .immediate)
+        if isSpeaking {
+            stopSpeaking()
             return
         }
         
-        // Only record playback for saved prayers
-        recordPlayback(prayer)
-        
-        let utterance = AVSpeechUtterance(string: prayer.text)
-        
-        let voices = getAvailableVoices()
-        if settings.voiceIndex < voices.count {
-            utterance.voice = voices[settings.voiceIndex]
-        } else {
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        // Get selected voice
+        guard let voice = getVoiceByIndex(settings.voiceIndex) else {
+            print("⚠️ No voice selected, using default Apple voice")
+            speakWithAppleTTS(prayer.text)
+            recordPlayback(prayer)
+            return
         }
         
-        utterance.rate = Float(settings.playbackRate)
+        print("🎙️ Speaking prayer with voice: \(voice.name) (\(voice.provider))")
         
-        synthesizer.speak(utterance)
+        // Route to appropriate provider
+        switch voice.provider {
+        case "apple":
+            speakWithAppleTTS(prayer.text)
+            recordPlayback(prayer)
+            
+        case "azure", "fishaudio":
+            speakWithBackendTTS(prayer: prayer, voice: voice)
+            
+        default:
+            print("⚠️ Unknown provider: \(voice.provider), falling back to Apple")
+            speakWithAppleTTS(prayer.text)
+            recordPlayback(prayer)
+        }
+    }
+
+    /// Preview text without recording playback
+    func speakText(_ text: String) {
+        if isSpeaking {
+            stopSpeaking()
+            return
+        }
+        
+        guard let voice = getVoiceByIndex(settings.voiceIndex) else {
+            speakWithAppleTTS(text)
+            return
+        }
+        
+        print("🎙️ Previewing with voice: \(voice.name) (\(voice.provider))")
+        
+        switch voice.provider {
+        case "apple":
+            speakWithAppleTTS(text)
+            
+        case "azure", "fishaudio":
+            // For preview, we'd need to create a temporary prayer or handle differently
+            // For now, just use Apple TTS for previews
+            print("⚠️ Backend TTS preview not implemented, using Apple")
+            speakWithAppleTTS(text)
+            
+        default:
+            speakWithAppleTTS(text)
+        }
+    }
+
+    /// Stop any ongoing speech
+    func stopSpeaking() {
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        audioPlayer?.stop()
+        audioPlayer = nil
+        isSpeaking = false
     }
     
-    //For previewing text without a saved prayer (no playback recording)
-    func speakText(_ text: String) {
-        if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .immediate)
-            return
-        }
-        
+    // MARK: - Private TTS Methods
+
+    /// Use Apple's built-in TTS (client-side)
+    private func speakWithAppleTTS(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
         
-        let voices = getAvailableVoices()
-        if settings.voiceIndex < voices.count {
-            utterance.voice = voices[settings.voiceIndex]
+        // Try to find the Apple voice by ID
+        if let voice = getVoiceByIndex(settings.voiceIndex),
+           voice.provider == "apple" {
+            utterance.voice = AVSpeechSynthesisVoice(identifier: voice.id)
         } else {
+            // Fallback to default
             utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         }
         
-        utterance.rate = Float(settings.playbackRate)
+        utterance.pitchMultiplier = settings.pitch
+        utterance.volume = settings.volume
         
         synthesizer.speak(utterance)
     }
+
+    /// Use backend TTS (Azure or Fish Audio)
+    private func speakWithBackendTTS(prayer: Prayer, voice: VoiceOption) {
+        isLoading = true
+        
+        apiService.generateAudio(prayerId: prayer.id, voiceId: voice.id) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                
+                switch result {
+                case .success(let audioResponse):
+                    print("✅ Received audio from backend")
+                    print("   Provider: \(audioResponse.provider)")
+                    print("   Voice: \(audioResponse.voiceUsed)")
+                    
+                    // Decode base64 audio data
+                    guard let audioData = Data(base64Encoded: audioResponse.audioData) else {
+                        print("❌ Failed to decode base64 audio")
+                        self?.errorMessage = "Failed to decode audio"
+                        return
+                    }
+                    
+                    // Play the audio
+                    self?.playAudioData(audioData)
+                    
+                    // Record playback
+                    self?.recordPlayback(prayer)
+                    
+                case .failure(let error):
+                    print("❌ Failed to generate audio: \(error)")
+                    self?.errorMessage = error.localizedDescription
+                    
+                    // Fallback to Apple TTS
+                    print("⚠️ Falling back to Apple TTS")
+                    self?.speakWithAppleTTS(prayer.text)
+                    self?.recordPlayback(prayer)
+                }
+            }
+        }
+    }
+
+    /// Play audio data using AVAudioPlayer
+    private func playAudioData(_ data: Data) {
+        do {
+            audioPlayer = try AVAudioPlayer(data: data)
+            audioPlayer?.prepareToPlay()
+            audioPlayer?.volume = settings.volume
+            
+            // Set up audio session
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+            
+            audioPlayer?.play()
+            isSpeaking = true
+            
+            // Monitor playback completion
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
+                guard let self = self,
+                      let player = self.audioPlayer else {
+                    timer.invalidate()
+                    return
+                }
+                
+                if !player.isPlaying {
+                    timer.invalidate()
+                    self.isSpeaking = false
+                    self.audioPlayer = nil
+                }
+            }
+            
+        } catch {
+            print("❌ Failed to play audio: \(error)")
+            errorMessage = "Failed to play audio"
+            isSpeaking = false
+        }
+    }
+
+
     // MARK: - Local Cache
     
     private func savePrayersToCache() {

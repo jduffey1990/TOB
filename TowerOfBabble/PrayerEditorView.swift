@@ -18,6 +18,10 @@ struct PrayerEditorView: View {
     @State private var showingError: Bool = false
     @State private var errorMessage: String = ""
     @State private var isSaving: Bool = false
+    private var isImmutable: Bool {
+        prayer != nil
+    }
+
     
     var body: some View {
         NavigationView {
@@ -37,10 +41,10 @@ struct PrayerEditorView: View {
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(10)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.blue, lineWidth: 1)
-                    )
-                    .disabled(isSaving)
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(isImmutable ? Color.gray : Color.blue, lineWidth: 1)
+                        )
+                    .disabled(isSaving || isImmutable)
                 
                 // Buttons
                 HStack(spacing: 15) {
@@ -81,7 +85,7 @@ struct PrayerEditorView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle(prayer == nil ? "New Prayer" : "Edit Prayer")
+            .navigationTitle(prayer == nil ? "New Prayer" : "Prayer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if prayer == nil {  // Only show Cancel when creating new

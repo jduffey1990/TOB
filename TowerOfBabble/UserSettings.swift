@@ -9,13 +9,14 @@
 import Foundation
 
 struct UserSettings: Codable {
-    var voiceIndex: Int         // 0-8 depending on tier
-    var playbackRate: Double    // 0.0-1.0, where 0.5 = normal
+    var voiceIndex: Int
+    var pitch: Float
+    var volume: Float
     
-    // Default settings
     static let defaultSettings = UserSettings(
         voiceIndex: 0,
-        playbackRate: 0.5
+        pitch: 1.0,
+        volume: 1.0
     )
 }
 

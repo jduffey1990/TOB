@@ -122,16 +122,6 @@ struct SettingsView: View {
                         }
                     }
                     
-                    // Playback Speed
-                    NavigationLink(destination: PlaybackSpeedView()) {
-                        HStack {
-                            Image(systemName: "speedometer")
-                            Text("Playback Speed")
-                            Spacer()
-                            Text(formatPlaybackSpeed())
-                                .foregroundColor(.secondary)
-                        }
-                    }
                 }
                 
                 // App Info
@@ -248,28 +238,14 @@ struct SettingsView: View {
     
     private func getCurrentVoiceName() -> String {
         let voiceIndex = prayerManager.settings.voiceIndex
-        let voices = prayerManager.getAvailableVoices()
         
-        guard voiceIndex < voices.count else {
+        // Use the new method that returns VoiceOption objects
+        guard let voice = prayerManager.getVoiceByIndex(voiceIndex) else {
             return "Default"
         }
         
-        return voices[voiceIndex].name
+        return "\(voice.name) (\(voice.provider.capitalized))"
     }
-    
-    private func formatPlaybackSpeed() -> String {
-        let rate = prayerManager.settings.playbackRate
-        
-        switch rate {
-        case 0.3: return "Slow"
-        case 0.4: return "Slower"
-        case 0.5: return "Normal"
-        case 0.6: return "Faster"
-        case 0.7: return "Fast"
-        default: return String(format: "%.1fx", rate)
-        }
-    }
-    
     private var tierName: String {
         guard let stats = prayerManager.prayerStats else { return "Loading..." }
         switch stats.tier.lowercased() {
