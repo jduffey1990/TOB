@@ -37,23 +37,30 @@ struct PrayOnItItem: Identifiable, Codable {
     }
     
     enum PrayerFocus: String, Codable, CaseIterable {
-        case healing = "healing"
-        case guidance = "guidance"
-        case thanksgiving = "thanksgiving"
-        case protection = "protection"
-        case peace = "peace"
-        case strength = "strength"
-        case wisdom = "wisdom"
-        case comfort = "comfort"
-        case provision = "provision"
-        case salvation = "salvation"
-        case restoration = "restoration"
-        case patience = "patience"
-        
-        var displayName: String {
-            return rawValue.capitalized
-        }
+    case healing = "healing"
+    case guidance = "guidance"
+    case thanksgiving = "thanksgiving"
+    case protection = "protection"
+    case peace = "peace"
+    case strength = "strength"
+    case wisdom = "wisdom"
+    case comfort = "comfort"
+    case provision = "provision"
+    case salvation = "salvation"
+    case restoration = "restoration"
+    case patience = "patience"
+    case creativity = "creativity"        // ADD THIS
+    case unity = "unity"                  // ADD THIS
+    case justice = "justice"              // ADD THIS
+    case renewal = "renewal"              // ADD THIS
+    case discipline = "discipline"        // ADD THIS
+    case rest = "rest"                    // ADD THIS
+    case health = "health"
+    
+    var displayName: String {
+        return rawValue.capitalized
     }
+}
 }
 
 class PrayOnItManager: ObservableObject {

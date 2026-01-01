@@ -4,6 +4,7 @@
 //
 //  Create by Jordan Duffey 12/11/25
 //  Updated by Jordan Duffey 12/15/25
+//  FIXED: Debug section corrected to use prayerManager
 //
 
 import SwiftUI
@@ -120,6 +121,29 @@ struct PrayersListView: View {
                     Text("\(filteredPrayers.count) result\(filteredPrayers.count == 1 ? "" : "s")")
                 }
             }
+            
+            // ✅ FIXED: Debug section with proper variable references
+            #if DEBUG
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("🐛 DEBUG INFO")
+                        .font(.headline)
+                    if let stats = prayerManager.prayerStats {
+                        Text("Can create: \(stats.prayers.canCreate ? "✅ YES" : "❌ NO")")
+                        Text("Current count: \(stats.prayers.current)")
+                        Text("Limit: \(stats.prayers.limit?.description ?? "nil (unlimited)")")
+                        Text("Tier: \(stats.tier)")
+                        Text("Remaining: \(stats.prayers.remaining?.description ?? "unlimited")")
+                    } else {
+                        Text("Stats not loaded yet...")
+                    }
+                    Text("Prayers in UI: \(prayerManager.prayers.count)")
+                }
+                .font(.caption)
+                .padding(.vertical, 4)
+            }
+            .listRowBackground(Color.yellow.opacity(0.2))
+            #endif
         }
         .listStyle(InsetGroupedListStyle())
     }
@@ -273,7 +297,8 @@ struct PrayersListView: View {
     }
     
     private func logout() {
-        AuthManager.shared.logout()        // Force quit to restart authentication flow
+        AuthManager.shared.logout()
+        // Force quit to restart authentication flow
         exit(0)
     }
 }

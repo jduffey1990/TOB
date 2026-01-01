@@ -477,11 +477,23 @@ struct AddPrayerView: View {
                     .font(.headline)
             }
             
-            Text(generatedPrayer)
+            // Make the text editable with TextEditor
+            TextEditor(text: $generatedPrayer)
                 .font(.body)
                 .padding()
                 .background(Color(.systemGray6))
                 .cornerRadius(12)
+                .frame(minHeight: 150) // Ensures adequate editing space
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                )
+            
+            // Optional: Add a hint that it's editable
+            Text("Tap to edit prayer before saving")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .italic()
             
             HStack(spacing: 12) {
                 Button(action: savePrayer) {

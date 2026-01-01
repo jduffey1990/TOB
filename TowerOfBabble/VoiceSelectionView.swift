@@ -15,57 +15,22 @@ struct VoiceSelectionView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     
+    // MARK: - Helper Structures
+    
+    private struct VoiceItem: Identifiable {
+        let id = UUID()
+        let index: Int
+        let voice: VoiceOption
+        let isLocked: Bool
+        let isSelected: Bool
+    }
+    
+    // MARK: - Body
+    
     var body: some View {
         List {
-            ForEach(Array(prayerManager.getAvailableVoices().enumerated()), id: \.offset) { index, voice in
-                let isLocked = index > maxVoiceIndex
-                let isSelected = index == prayerManager.settings.voiceIndex
-                
-                Button(action: {
-                    if !isLocked {
-                        selectVoice(index)
-                    } else {
-                        // Show upgrade prompt
-                    }
-                }) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(voice.name)
-                                .font(.body)
-                                .foregroundColor(isLocked ? .gray : .primary)
-                            
-                            HStack(spacing: 4) {
-                                Text(voice.language)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                
-                                if index > 2 && index <= 5 {
-                                    Text("• Pro")
-                                        .font(.caption)
-                                        .foregroundColor(.blue)
-                                } else if index > 5 {
-                                    Text("• Warrior")
-                                        .font(.caption)
-                                        .foregroundColor(.purple)
-                                }
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        if isLocked {
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(.gray)
-                                .font(.caption)
-                        } else if isSelected {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .disabled(isLocked || isSaving)
-                .opacity(isSaving ? 0.6 : 1.0)
+            ForEach(voiceItems) { item in
+                voiceButton(for: item)
             }
         }
         .navigationTitle("Voice Selection")
@@ -78,10 +43,7 @@ struct VoiceSelectionView: View {
                 }
             }
         )
-        .alert("Error", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
+        .alert("Error", isPresented: errorMessageBinding) {
             Button("OK", role: .cancel) { }
         } message: {
             if let errorMessage = errorMessage {
@@ -90,10 +52,72 @@ struct VoiceSelectionView: View {
         }
     }
     
+    // MARK: - View Builders
+    
+    @ViewBuilder
+    private func voiceButton(for item: VoiceItem) -> some View {
+        Button(action: {
+            if !item.isLocked {
+                selectVoice(item.index)
+            }
+        }) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.voice.name)
+                        .font(.body)
+                        .foregroundColor(item.isLocked ? .gray : .primary)
+                    
+                    HStack(spacing: 4) {
+                        Text(item.voice.language)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        if let tierBadge = getTierBadge(for: item.index) {
+                            Text(tierBadge.text)
+                                .font(.caption)
+                                .foregroundColor(tierBadge.color)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                if item.isLocked {
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(.gray)
+                        .font(.caption)
+                } else if item.isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.blue)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .disabled(item.isLocked || isSaving)
+        .opacity(isSaving ? 0.6 : 1.0)
+    }
+    
     // MARK: - Computed Properties
     
+    private var voiceItems: [VoiceItem] {
+        prayerManager.availableVoices.enumerated().map { index, voice in
+            VoiceItem(
+                index: index,
+                voice: voice,
+                isLocked: index > maxVoiceIndex,
+                isSelected: index == prayerManager.settings.voiceIndex
+            )
+        }
+    }
+    
+    private var errorMessageBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
+    }
+    
     private var maxVoiceIndex: Int {
-        // Based on user's tier
         guard let tier = prayerManager.prayerStats?.tier.lowercased() else {
             return 2 // Default to free
         }
@@ -104,6 +128,17 @@ struct VoiceSelectionView: View {
         case "lifetime", "warrior": return 8
         default: return 2
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func getTierBadge(for index: Int) -> (text: String, color: Color)? {
+        if index > 2 && index <= 5 {
+            return ("• Pro", .blue)
+        } else if index > 5 {
+            return ("• Warrior", .purple)
+        }
+        return nil
     }
     
     // MARK: - Actions

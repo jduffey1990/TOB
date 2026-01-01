@@ -2,38 +2,33 @@
 //  SettingsAPIService.swift
 //  TowerOfBabble
 //
-//  Created by Jordan Duffey on 12/16/25.
-//  API service for user settings
+//  Settings API service matching backend /users/me/settings endpoint
 //
 
 import Foundation
 
-// MARK: - Error Types
-
-enum SettingsAPIError: Error {
+enum SettingsAPIError: Error, LocalizedError {
     case unauthorized
     case networkError(String)
-    case serverError(String)
     case decodingError
+    case serverError(String)
     case unknown
     
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .unauthorized:
             return "Please log in again"
         case .networkError(let message):
-            return "Network error: \(message)"
-        case .serverError(let message):
-            return "Server error: \(message)"
+            return message
         case .decodingError:
-            return "Failed to process server response"
+            return "Failed to decode response"
+        case .serverError(let message):
+            return message
         case .unknown:
             return "An unknown error occurred"
         }
     }
 }
-
-// MARK: - Settings API Service
 
 class SettingsAPIService {
     static let shared = SettingsAPIService()
@@ -42,10 +37,11 @@ class SettingsAPIService {
     
     private init() {}
     
-    // MARK: - Helper: Create Authorized Request
+    // MARK: - Helper Methods
     
     private func createAuthorizedRequest(url: URL, method: String = "GET") -> URLRequest? {
-        guard let token = UserDefaults.standard.string(forKey: "authToken") else {
+        // ✅ Get token from AuthManager instead of UserDefaults
+        guard let token = AuthManager.shared.getToken() else {
             print("❌ No auth token found")
             return nil
         }
@@ -60,18 +56,16 @@ class SettingsAPIService {
     
     // MARK: - Get Settings
     
-    func fetchSettings(completion: @escaping (Result<UserSettings, SettingsAPIError>) -> Void) {
+    func getSettings(completion: @escaping (Result<UserSettings, SettingsAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/users/me/settings") else {
             completion(.failure(.networkError("Invalid URL")))
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url) else {
+        guard let request = createAuthorizedRequest(url: url, method: "GET") else {
             completion(.failure(.unauthorized))
             return
         }
-        
-        print("🔵 Fetching settings from: \(url)")
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -98,7 +92,7 @@ class SettingsAPIService {
                     let decoder = JSONDecoder()
                     decoder.keyDecodingStrategy = .convertFromSnakeCase
                     let settings = try decoder.decode(UserSettings.self, from: data)
-                    print("✅ Fetched settings: voice=\(settings.voiceIndex)")
+                    print("✅ Fetched settings: voice=\(settings.voiceIndex), rate=\(settings.playbackRate)")
                     completion(.success(settings))
                 } catch {
                     print("❌ Decoding error: \(error)")
@@ -124,7 +118,7 @@ class SettingsAPIService {
     
     // MARK: - Update Settings
     
-    func updateSettings(voiceIndex: Int? = nil, completion: @escaping (Result<User, SettingsAPIError>) -> Void) {
+    func updateSettings(voiceIndex: Int? = nil, playbackRate: Float? = nil, completion: @escaping (Result<User, SettingsAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/users/me/settings") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -139,6 +133,9 @@ class SettingsAPIService {
         var payload: [String: Any] = [:]
         if let voiceIndex = voiceIndex {
             payload["voiceIndex"] = voiceIndex
+        }
+        if let playbackRate = playbackRate {
+            payload["playbackRate"] = playbackRate
         }
         
         guard !payload.isEmpty else {
@@ -174,33 +171,27 @@ class SettingsAPIService {
             
             print("🔵 Response status: \(httpResponse.statusCode)")
             
+            // Log raw response for debugging
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔵 Response body: \(jsonString)")
+            }
+            
             switch httpResponse.statusCode {
             case 200:
                 do {
                     let decoder = JSONDecoder()
                     decoder.keyDecodingStrategy = .convertFromSnakeCase
-                    decoder.dateDecodingStrategy = .iso8601
                     let user = try decoder.decode(User.self, from: data)
-                    print("✅ Updated settings successfully")
+                    print("✅ Settings updated successfully")
                     completion(.success(user))
                 } catch {
                     print("❌ Decoding error: \(error)")
-                    if let jsonString = String(data: data, encoding: .utf8) {
-                        print("Response: \(jsonString)")
-                    }
+                    print("❌ Detailed decoding error: \(error)")
                     completion(.failure(.decodingError))
                 }
                 
             case 401:
                 completion(.failure(.unauthorized))
-                
-            case 400:
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let message = json["error"] as? String {
-                    completion(.failure(.serverError(message)))
-                } else {
-                    completion(.failure(.serverError("Invalid request")))
-                }
                 
             default:
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
