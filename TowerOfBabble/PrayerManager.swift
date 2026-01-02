@@ -73,6 +73,7 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     private var audioPlayer: AVAudioPlayer?
     private let apiService = PrayerAPIService.shared
     
+    
     // Local cache key for offline support
     private let prayersKey = "cachedPrayers"
     private let defaults = UserDefaults.standard
@@ -639,6 +640,20 @@ class PrayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
             prayers = decoded
             print("💾 Loaded \(prayers.count) prayers from cache")
         }
+    }
+    
+    // MARK: - Event driven state checks
+    
+    func fetchAudioState(prayerId: String, completion: @escaping (PrayerAudioState) -> Void) {
+        completion(.missing)
+    }
+
+    func requestAudioGeneration(prayerId: String) {
+        // POST → backend (202)
+    }
+
+    func playRemoteAudio(_ url: URL) {
+        // download + AVAudioPlayer
     }
     
     // MARK: - Manual Refresh

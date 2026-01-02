@@ -7,6 +7,12 @@
 
 import SwiftUI
 
+enum PrayerAudioState {
+    case missing
+    case building
+    case ready(URL)
+}
+
 struct PrayerEditorView: View {
     @EnvironmentObject var prayerManager: PrayerManager
     @Environment(\.dismiss) var dismiss
@@ -18,6 +24,8 @@ struct PrayerEditorView: View {
     @State private var showingError: Bool = false
     @State private var errorMessage: String = ""
     @State private var isSaving: Bool = false
+    @State private var audioState: PrayerAudioState = .missing
+    @State private var pollingTimer: Timer?
     private var isImmutable: Bool {
         prayer != nil
     }
@@ -67,18 +75,16 @@ struct PrayerEditorView: View {
                     }
                     .disabled(isSaving || title.isEmpty || text.isEmpty)
                     
-                    Button(action: playPrayer) {
-                        Label(
-                            prayerManager.isSpeaking ? "Stop" : "Play",
-                            systemImage: prayerManager.isSpeaking ? "stop.circle" : "play.circle"
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(prayerManager.isSpeaking ? Color.red : Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
+                    Button(action: handleActionButton) {
+                        actionButtonLabel
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(actionButtonColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
                     }
-                    .disabled(text.isEmpty || isSaving)
+                    .disabled(isActionButtonDisabled)
+
                 }
                 .padding(.horizontal)
                 
@@ -101,8 +107,13 @@ struct PrayerEditorView: View {
                 if let prayer = prayer {
                     title = prayer.title
                     text = prayer.text
+                    fetchAudioState()
                 }
             }
+            .onDisappear {
+                pollingTimer?.invalidate()
+            }
+
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {
                     showingError = false
@@ -112,6 +123,35 @@ struct PrayerEditorView: View {
             }
         }
     }
+        
+    private var actionButtonLabel: some View {
+        switch audioState {
+        case .missing:
+            return AnyView(Label("Generate Audio", systemImage: "waveform"))
+        case .building:
+            return AnyView(Label("Building Audio…", systemImage: "hourglass"))
+        case .ready:
+            return AnyView(
+                Label(
+                    prayerManager.isSpeaking ? "Stop" : "Play",
+                    systemImage: prayerManager.isSpeaking ? "stop.circle" : "play.circle"
+                )
+            )
+        }
+    }
+    private var isActionButtonDisabled: Bool {
+        if case .building = audioState { return true }
+        return isSaving
+    }
+
+    private var actionButtonColor: Color {
+        switch audioState {
+        case .missing: return .blue
+        case .building: return .gray
+        case .ready: return prayerManager.isSpeaking ? .red : .green
+        }
+    }
+
     
     private func savePrayer() {
         guard !title.isEmpty, !text.isEmpty else { return }
@@ -165,5 +205,49 @@ struct PrayerEditorView: View {
             prayerManager.speakText(text)
         }
     }
+        
+    private func fetchAudioState() {
+        guard let prayer = prayer else { return }
+
+        prayerManager.fetchAudioState(prayerId: prayer.id) { state in
+            DispatchQueue.main.async {
+                audioState = state
+
+                if case .building = state {
+                    startPolling()
+                }
+            }
+        }
+    }
+    private func startPolling() {
+        if pollingTimer != nil { return }
+
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            fetchAudioState()
+        }
+    }
+    private func handleActionButton() {
+        guard let prayer = prayer else { return }
+
+        switch audioState {
+        case .missing:
+            prayerManager.requestAudioGeneration(prayerId: prayer.id)
+            audioState = .building
+            startPolling()
+
+        case .building:
+            return
+
+        case .ready(let url):
+            if prayerManager.isSpeaking {
+                prayerManager.stopSpeaking()
+            } else {
+                prayerManager.playRemoteAudio(url)
+            }
+        }
+    }
+
+
+
 
 }
