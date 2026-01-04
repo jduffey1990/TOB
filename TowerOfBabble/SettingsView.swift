@@ -237,10 +237,10 @@ struct SettingsView: View {
     // MARK: - Helper Methods
     
     private func getCurrentVoiceName() -> String {
-        let voiceIndex = prayerManager.settings.voiceIndex
+        let voiceIndex = VoiceManager.settings.voiceIndex
         
         // Use the new method that returns VoiceOption objects
-        guard let voice = prayerManager.getVoiceByIndex(voiceIndex) else {
+        guard let voice = VoiceManager.getVoiceByIndex(voiceIndex) else {
             return "Default"
         }
         

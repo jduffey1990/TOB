@@ -13,7 +13,7 @@ import SwiftUI
 struct MainTabView: View {
     @ObservedObject private var prayerManager = PrayerManager.shared
     @ObservedObject private var prayOnItManager = PrayOnItManager.shared
-    @State private var selectedTab = 3 // Start on "My Prayers" tab
+    @State private var selectedTab = 4 // Start on "My Prayers" tab
     @State private var showingAddPrayer = false       // AI builder
     @State private var showingManualEntry = false     // Direct to PrayerEditorView
     @State private var showingUpgradeSheet = false    // Upgrade prompt

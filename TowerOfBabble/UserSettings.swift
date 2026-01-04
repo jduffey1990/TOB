@@ -37,4 +37,6 @@ struct UserSettings: Codable {
         voiceIndex: 0,
         playbackRate: 0.5  // Normal speech rate
     )
+        
+        /// Fetch available voices from backen
 }

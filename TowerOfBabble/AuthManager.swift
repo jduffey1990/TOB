@@ -89,9 +89,9 @@ class AuthManager: ObservableObject {
             UserDefaults.standard.set(expiresAt, forKey: userSubscriptionExpiresAtKey)
         }
         
-        // ✅ Load user's settings from backend into PrayerManager
-        PrayerManager.shared.settings = user.settings
-        PrayerManager.shared.saveSettings() // This saves to UserDefaults under "userSettings"
+        // ✅ Load user's settings from backend into VoiceManager
+        VoiceManager.shared.settings = user.settings
+        VoiceManager.shared.saveSettings() // This saves to UserDefaults under "userSettings"
         
         // Update in-memory state
         self.authToken = token
