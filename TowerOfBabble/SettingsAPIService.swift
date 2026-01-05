@@ -37,32 +37,15 @@ class SettingsAPIService {
     
     private init() {}
     
-    // MARK: - Helper Methods
-    
-    private func createAuthorizedRequest(url: URL, method: String = "GET") -> URLRequest? {
-        // ✅ Get token from AuthManager instead of UserDefaults
-        guard let token = AuthManager.shared.getToken() else {
-            print("❌ No auth token found")
-            return nil
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        return request
-    }
-    
     // MARK: - Get Settings
     
-    func getSettings(completion: @escaping (Result<UserSettings, SettingsAPIError>) -> Void) {
+    func getSettings(completion: @escaping (Result<UserSettingsModel, SettingsAPIError>) -> Void) {
         guard let url = URL(string: "\(baseURL)/users/me/settings") else {
             completion(.failure(.networkError("Invalid URL")))
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url, method: "GET") else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -91,7 +74,7 @@ class SettingsAPIService {
                 do {
                     let decoder = JSONDecoder()
                     decoder.keyDecodingStrategy = .convertFromSnakeCase
-                    let settings = try decoder.decode(UserSettings.self, from: data)
+                    let settings = try decoder.decode(UserSettingsModel.self, from: data)  // ✅ CHANGED
                     print("✅ Fetched settings: voice=\(settings.voiceIndex), rate=\(settings.playbackRate)")
                     completion(.success(settings))
                 } catch {
@@ -124,7 +107,7 @@ class SettingsAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "PATCH") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "PATCH") else {
             completion(.failure(.unauthorized))
             return
         }

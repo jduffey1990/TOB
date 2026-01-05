@@ -2,18 +2,17 @@
 //  PrayerManager.swift
 //  TowerOfBabble
 //
-//  Updated to use backend API instead of UserDefaults
-//  Converted to singleton pattern for shared state across views
-//  INCLUDES settings management for voice and playback
+//  Refactored to focus purely on prayer management
+//  Settings moved to UserSettings, voices moved to VoiceService
 //
 
 import Foundation
-import AVFoundation
 import Combine
 
-// MARK: - Prayer Model (matches backend)
+// MARK: - Prayer Model
+
 struct Prayer: Identifiable, Codable {
-    let id: String  // ✅ String ID from backend (no UUID conversion)
+    let id: String  // String ID from backend
     let userId: String
     var title: String
     var text: String
@@ -25,33 +24,23 @@ struct Prayer: Identifiable, Codable {
     let updatedAt: String
     let deletedAt: String?
     
-    // Helper to get createdAt as Date for UI sorting if needed
+    // Helper to get createdAt as Date for UI sorting
     var createdDate: Date {
         ISO8601DateFormatter().date(from: createdAt) ?? Date()
     }
 }
 
-struct VoiceOption: Codable {
-    let id: String
-    let name: String
-    let language: String
-    let gender: String
-    let description: String
-    let tier: String
-    let provider: String  // "apple", "azure", "fishaudio"
+struct PrayerLimits: Codable {
+    let current: Int
+    let limit: Int?
 }
 
-struct VoicesResponse: Codable {
-    let userTier: String
-    let availableVoices: [VoiceOption]
-    let allVoices: [VoiceOption]
-    let count: VoiceCount
+struct AIGenerationLimits: Codable {
+    let used: Int
+    let limit: Int?
 }
 
-struct VoiceCount: Codable {
-    let available: Int
-    let total: Int
-}
+// MARK: - Prayer Manager
 
 class PrayerManager: ObservableObject {
     
@@ -67,22 +56,22 @@ class PrayerManager: ObservableObject {
     @Published var prayerStats: PrayerStatsResponse?
     
     // MARK: - Private Properties
-    
-    private let apiService = PrayerAPIService.shared
-    private let prayersKey = "cachedPrayers"
-    private let defaults = UserDefaults.standard
+    private let audioPlayer = AudioPlayerManager.shared
     
     // MARK: - Initialization
     
+    private let apiService = PrayerAPIService.shared
     private init() {
-        loadPrayersFromCache()
-        fetchPrayersFromAPI()
-        fetchStats()
+        loadPrayers()
+        loadStats()
     }
     
-    // MARK: - Fetch Prayers from API
+    func fetchStats(completion: @escaping (Result<PrayerStatsResponse, PrayerAPIError>) -> Void) {
+        apiService.fetchPrayerStats(completion: completion)
+    }
+    // MARK: - Prayer CRUD Operations
     
-    func fetchPrayersFromAPI() {
+    func loadPrayers() {
         isLoading = true
         errorMessage = nil
         
@@ -91,69 +80,111 @@ class PrayerManager: ObservableObject {
                 self?.isLoading = false
                 
                 switch result {
-                case .success(let prayers):
-                    self?.prayers = prayers
-                    self?.savePrayersToCache()
-                    print("✅ Loaded \(prayers.count) prayers from API")
+                case .success(let fetchedPrayers):
+                    self?.prayers = fetchedPrayers.sorted { $0.createdDate > $1.createdDate }
+                    print("✅ Loaded \(fetchedPrayers.count) prayers")
                     
                 case .failure(let error):
                     self?.errorMessage = error.localizedDescription
-                    print("❌ Failed to fetch prayers: \(error.localizedDescription)")
-                    
-                    // Keep cached prayers if API fails
-                    if self?.prayers.isEmpty == true {
-                        self?.loadPrayersFromCache()
-                    }
+                    print("❌ Failed to load prayers: \(error)")
                 }
             }
         }
     }
     
-    // MARK: - Create Prayer
-    
-    func addPrayer(
-        title: String,
-        text: String,
-        completion: ((Result<Prayer, PrayerAPIError>) -> Void)? = nil
-    ) {
-        isLoading = true
-        errorMessage = nil
-        
+    func addPrayer(title: String, text: String, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
         apiService.createPrayer(title: title, text: text) { [weak self] result in
             DispatchQueue.main.async {
-                self?.isLoading = false
-                
                 switch result {
-                case .success(let newPrayer):
-                    self?.prayers.append(newPrayer)
-                    self?.savePrayersToCache()
-                    self?.fetchStats() // Update stats after creating
-                    print("✅ Prayer created: \(newPrayer.id)")
-                    completion?(.success(newPrayer))
+                case .success(let prayer):
+                    self?.prayers.insert(prayer, at: 0)
+                    self?.loadStats() // Refresh stats after adding
+                    completion(.success(prayer))
                     
                 case .failure(let error):
-                    self?.errorMessage = error.localizedDescription
-                    print("❌ Failed to create prayer: \(error.localizedDescription)")
-                    
-                    // Refresh stats if limit reached
-                    if case .limitReached = error {
-                        self?.fetchStats()
-                    }
-                    
-                    completion?(.failure(error))
+                    completion(.failure(error))
                 }
             }
         }
     }
     
-    // MARK: - AI Prayer Generation
+    func updatePrayer(_ prayer: Prayer, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
+        apiService.updatePrayer(
+            id: prayer.id,
+            title: prayer.title,
+            text: prayer.text,
+            category: prayer.category
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let updatedPrayer):
+                    if let index = self?.prayers.firstIndex(where: { $0.id == updatedPrayer.id }) {
+                        self?.prayers[index] = updatedPrayer
+                    }
+                    completion(.success(updatedPrayer))
+                    
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
     
-    func generatePrayerWithAI(
+    func deletePrayer(_ prayer: Prayer, completion: @escaping (Result<Void, PrayerAPIError>) -> Void) {
+        apiService.deletePrayer(id: prayer.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.prayers.removeAll { $0.id == prayer.id }
+                    self?.loadStats() // Refresh stats after deleting
+                    completion(.success(()))
+                    
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+    
+    
+    // MARK: - AI Prayer Generation
+
+    func postPrompt(
         _ requestPayload: [String: Any],
         completion: ((Result<String, PrayerAPIError>) -> Void)? = nil
     ) {
-        print("\n🟦 [PrayerManager] Generating AI prayer")
+        print("\n🟦 [PrayerManager] postPrompt called")
         print("   Payload keys: \(requestPayload.keys.joined(separator: ", "))")
+        
+        // Log payload details
+        if let items = requestPayload["prayOnItItems"] as? [[String: Any]] {
+            print("   📋 Pray On It Items: \(items.count)")
+            items.forEach { item in
+                if let name = item["name"] as? String {
+                    print("      - \(name)")
+                }
+            }
+        }
+        
+        if let type = requestPayload["prayerType"] as? String {
+            print("   🙏 Prayer Type: \(type)")
+        }
+        
+        if let tone = requestPayload["tone"] as? String {
+            print("   🎵 Tone: \(tone)")
+        }
+        
+        if let length = requestPayload["length"] as? String {
+            print("   ⏱️  Length: \(length)")
+        }
+        
+        if let expansiveness = requestPayload["expansiveness"] as? String {
+            print("   📝 Expansiveness: \(expansiveness)")
+        }
+        
+        if let context = requestPayload["customContext"], !(context is NSNull) {
+            print("   💬 Has custom context: Yes")
+        }
         
         isLoading = true
         errorMessage = nil
@@ -164,11 +195,13 @@ class PrayerManager: ObservableObject {
                 
                 switch result {
                 case .success(let generatedText):
-                    print("✅ [PrayerManager] AI prayer generated (\(generatedText.count) chars)")
+                    print("✅ [PrayerManager] Prompt returned successfully")
+                    print("   Generated text length: \(generatedText.count) characters")
+                    print("   Preview: \(String(generatedText.prefix(100)))...")
                     completion?(.success(generatedText))
                     
                 case .failure(let error):
-                    print("❌ [PrayerManager] AI generation failed: \(error)")
+                    print("❌ [PrayerManager] Prompt failed: \(error)")
                     self?.errorMessage = error.localizedDescription
                     completion?(.failure(error))
                 }
@@ -176,145 +209,72 @@ class PrayerManager: ObservableObject {
         }
     }
     
-    // MARK: - Update Prayer
+    // MARK: - Stats Management
     
-    func updatePrayer(
-        _ prayer: Prayer,
-        completion: ((Result<Prayer, PrayerAPIError>) -> Void)? = nil
-    ) {
-        isLoading = true
-        errorMessage = nil
-        
-        apiService.updatePrayer(
-            id: prayer.id,
-            title: prayer.title,
-            text: prayer.text,
-            category: nil
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success(let updatedPrayer):
-                    if let index = self?.prayers.firstIndex(where: { $0.id == prayer.id }) {
-                        self?.prayers[index] = updatedPrayer
-                        self?.savePrayersToCache()
-                        print("✅ Prayer updated: \(updatedPrayer.id)")
-                    }
-                    completion?(.success(updatedPrayer))
-                    
-                case .failure(let error):
-                    self?.errorMessage = error.localizedDescription
-                    print("❌ Failed to update prayer: \(error.localizedDescription)")
-                    completion?(.failure(error))
-                }
-            }
-        }
-    }
-    
-    // MARK: - Delete Prayer
-    
-    func deletePrayer(
-        _ prayer: Prayer,
-        completion: ((Result<Void, PrayerAPIError>) -> Void)? = nil
-    ) {
-        isLoading = true
-        errorMessage = nil
-        
-        apiService.deletePrayer(id: prayer.id) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                switch result {
-                case .success:
-                    self?.prayers.removeAll { $0.id == prayer.id }
-                    self?.savePrayersToCache()
-                    self?.fetchStats() // Update stats after deleting
-                    print("✅ Prayer deleted: \(prayer.id)")
-                    completion?(.success(()))
-                    
-                case .failure(let error):
-                    self?.errorMessage = error.localizedDescription
-                    print("❌ Failed to delete prayer: \(error.localizedDescription)")
-                    completion?(.failure(error))
-                }
-            }
-        }
-    }
-    
-    // MARK: - Prayer Stats
-    
-    func fetchStats() {
+    func loadStats() {
         apiService.fetchPrayerStats { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let stats):
                     self?.prayerStats = stats
-                    print("✅ Stats: \(stats.prayers.current)/\(stats.prayers.limit ?? 0) prayers")
+                    print("✅ Loaded prayer stats: \(stats.prayers.current)/\(stats.prayers.limit ?? 999) prayers")
                     
                 case .failure(let error):
-                    print("⚠️ Failed to fetch stats: \(error.localizedDescription)")
+                    print("❌ Failed to load stats: \(error)")
                 }
             }
         }
     }
     
-    var prayerCountText: String {
-        guard let stats = prayerStats else {
-            return "\(prayers.count) prayers"
-        }
-        
-        if let limit = stats.prayers.limit {
-            return "\(stats.prayers.current)/\(limit) prayers"
-        } else {
-            return "\(stats.prayers.current) prayers (unlimited)"
-        }
-    }
-    
+    /// Check if user can create more prayers based on their tier limit
     var canCreateMorePrayers: Bool {
         guard let stats = prayerStats else {
-            return true // Assume yes if stats not loaded
+            return true // If we don't have stats yet, allow (will be validated by backend)
         }
-        return stats.prayers.canCreate
+        
+        // If there's no limit (pro/lifetime), always allow
+        guard let limit = stats.prayers.limit else {
+            return true
+        }
+        
+        // Check if under limit
+        return stats.prayers.current < limit
     }
     
+    /// Check if user has AI generation credits available
     var hasAICredits: Bool {
-        // TODO: Add AI credits tracking if needed
         return true
     }
     
-    // MARK: - Local Cache
+    // MARK: - Playback (Delegates to AudioPlayerManager)
     
-    private func savePrayersToCache() {
-        if let encoded = try? JSONEncoder().encode(prayers) {
-            defaults.set(encoded, forKey: prayersKey)
-            print("💾 Cached \(prayers.count) prayers locally")
+    /// Play a prayer with the user's selected voice
+    func playPrayer(_ prayer: Prayer) {
+        // Get current voice from VoiceService
+        guard let voice = VoiceService.shared.getCurrentVoice() else {
+            print("❌ No voice selected")
+            errorMessage = "No voice selected"
+            return
         }
+        
+        audioPlayer.playPrayer(prayer, voice: voice)
     }
     
-    private func loadPrayersFromCache() {
-        if let data = defaults.data(forKey: prayersKey),
-           let decoded = try? JSONDecoder().decode([Prayer].self, from: data) {
-            prayers = decoded
-            print("💾 Loaded \(prayers.count) prayers from cache")
-        }
+    /// Stop any ongoing playback
+    func stopSpeaking() {
+        audioPlayer.stopSpeaking()
     }
     
-    // MARK: - Manual Refresh
+    /// Check if currently speaking
+    var isSpeaking: Bool {
+        return audioPlayer.isSpeaking
+    }
+    
+    // MARK: - Refresh All Data
     
     func refresh() {
-        fetchPrayersFromAPI()
-        fetchStats()
+        loadPrayers()
+        loadStats()
+        VoiceService.shared.fetchVoices()
     }
 }
-
-
-
-
-
-
-
-
-
-
-

@@ -15,6 +15,7 @@ enum PrayerAudioState {
 
 struct PrayerEditorView: View {
     @EnvironmentObject var prayerManager: PrayerManager
+    @ObservedObject private var audioPlayer = AudioPlayerManager.shared
     @Environment(\.dismiss) var dismiss
     
     let prayer: Prayer? // nil if creating new, has value if editing
@@ -197,24 +198,31 @@ struct PrayerEditorView: View {
         }
     }
     private func playPrayer() {
-        if let existingPrayer = prayer {
-            // Editing existing prayer - play the saved one (records playback)
-            prayerManager.speakPrayer(existingPrayer)
-        } else {
-            // New prayer not yet saved - just preview the text (no playback recording)
-            prayerManager.speakText(text)
+        guard let prayer = prayer else { return }
+        guard let voice = VoiceService.shared.getCurrentVoice() else {
+            errorMessage = "No voice selected"
+            showingError = true
+            return
         }
+        
+        audioPlayer.playPrayer(prayer, voice: voice)  // ✅ Use audioPlayer
     }
         
     private func fetchAudioState() {
         guard let prayer = prayer else { return }
+        guard let voice = VoiceService.shared.getCurrentVoice() else { return }
 
-        prayerManager.fetchAudioState(prayerId: prayer.id) { state in
+        audioPlayer.checkAudioState(prayerId: prayer.id, voiceId: voice.id) { state in
             DispatchQueue.main.async {
-                audioState = state
+                // Convert AudioState to PrayerAudioState
+                switch state {
+                case .missing: self.audioState = .missing
+                case .building: self.audioState = .building
+                case .ready(let url): self.audioState = .ready(url)
+                }
 
-                if case .building = state {
-                    startPolling()
+                if case .building = self.audioState {
+                    self.startPolling()
                 }
             }
         }
@@ -228,10 +236,11 @@ struct PrayerEditorView: View {
     }
     private func handleActionButton() {
         guard let prayer = prayer else { return }
+        guard let voice = VoiceService.shared.getCurrentVoice() else { return }
 
         switch audioState {
         case .missing:
-            prayerManager.requestAudioGeneration(prayerId: prayer.id)
+            audioPlayer.playPrayer(prayer, voice: voice)  // ✅ This triggers generation
             audioState = .building
             startPolling()
 
@@ -239,10 +248,10 @@ struct PrayerEditorView: View {
             return
 
         case .ready(let url):
-            if prayerManager.isSpeaking {
-                prayerManager.stopSpeaking()
+            if audioPlayer.isSpeaking {
+                audioPlayer.stopSpeaking()
             } else {
-                prayerManager.playRemoteAudio(url)
+                audioPlayer.playRemoteAudio(url)
             }
         }
     }

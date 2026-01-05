@@ -3,17 +3,23 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/16/25.
-//  Voice selection with tier-based access
+//
+//  VoiceSelectionView.swift
+//  TowerOfBabble
+//
+//  Refactored to use UserSettings and VoiceService
 //
 
 import SwiftUI
 import AVFoundation
 
 struct VoiceSelectionView: View {
-    @EnvironmentObject var prayerManager: PrayerManager
     @Environment(\.dismiss) var dismiss
+    @ObservedObject private var userSettings = UserSettings.shared
+    @State private var voiceService = VoiceService.shared
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var prayerStats: PrayerStatsResponse?
     
     // MARK: - Helper Structures
     
@@ -37,7 +43,7 @@ struct VoiceSelectionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .overlay(
             Group {
-                if isSaving {
+                if isSaving || userSettings.isLoading {
                     ProgressView()
                         .scaleEffect(1.5)
                 }
@@ -49,6 +55,9 @@ struct VoiceSelectionView: View {
             if let errorMessage = errorMessage {
                 Text(errorMessage)
             }
+        }
+        .onAppear {
+            loadPrayerStats()
         }
     }
     
@@ -72,10 +81,10 @@ struct VoiceSelectionView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
-                        if let tierBadge = getTierBadge(for: item.index) {
+                        if let tierBadge = voiceService.getTierBadge(for: item.index) {
                             Text(tierBadge.text)
                                 .font(.caption)
-                                .foregroundColor(tierBadge.color)
+                                .foregroundColor(tierBadge.color == "blue" ? .blue : .purple)
                         }
                     }
                 }
@@ -93,32 +102,35 @@ struct VoiceSelectionView: View {
             }
             .padding(.vertical, 4)
         }
-        .disabled(item.isLocked || isSaving)
-        .opacity(isSaving ? 0.6 : 1.0)
+        .disabled(item.isLocked || isSaving || userSettings.isLoading)
+        .opacity((isSaving || userSettings.isLoading) ? 0.6 : 1.0)
     }
     
     // MARK: - Computed Properties
     
     private var voiceItems: [VoiceItem] {
-        prayerManager.availableVoices.enumerated().map { index, voice in
+        voiceService.availableVoices.enumerated().map { index, voice in
             VoiceItem(
                 index: index,
                 voice: voice,
                 isLocked: index > maxVoiceIndex,
-                isSelected: index == prayerManager.settings.voiceIndex
+                isSelected: index == userSettings.currentVoiceIndex
             )
         }
     }
     
     private var errorMessageBinding: Binding<Bool> {
         Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
+            get: { errorMessage != nil || userSettings.errorMessage != nil },
+            set: { if !$0 {
+                errorMessage = nil
+                userSettings.errorMessage = nil
+            }}
         )
     }
     
     private var maxVoiceIndex: Int {
-        guard let tier = prayerManager.prayerStats?.tier.lowercased() else {
+        guard let tier = prayerStats?.tier.lowercased() else {
             return 2 // Default to free
         }
         
@@ -132,13 +144,17 @@ struct VoiceSelectionView: View {
     
     // MARK: - Helper Methods
     
-    private func getTierBadge(for index: Int) -> (text: String, color: Color)? {
-        if index > 2 && index <= 5 {
-            return ("• Pro", .blue)
-        } else if index > 5 {
-            return ("• Warrior", .purple)
+    private func loadPrayerStats() {
+        PrayerManager.shared.fetchStats { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let stats):
+                    prayerStats = stats
+                case .failure(let error):
+                    print("❌ Failed to load stats: \(error)")
+                }
+            }
         }
-        return nil
     }
     
     // MARK: - Actions
@@ -147,13 +163,12 @@ struct VoiceSelectionView: View {
         isSaving = true
         errorMessage = nil
         
-        SettingsAPIService.shared.updateSettings(voiceIndex: index) { result in
+        userSettings.updateVoiceIndex(index) { result in
             DispatchQueue.main.async {
                 isSaving = false
                 
                 switch result {
-                case .success(let user):
-                    prayerManager.settings = user.settings
+                case .success:
                     print("✅ Voice updated to index \(index)")
                     
                 case .failure(let error):
@@ -171,7 +186,6 @@ struct VoiceSelectionView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationView {
             VoiceSelectionView()
-                .environmentObject(PrayerManager.shared)
         }
     }
 }

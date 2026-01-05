@@ -65,23 +65,6 @@ class PrayOnItAPIService {
     
     private init() {}
     
-    // MARK: - Helper: Create Authorized Request
-    
-    private func createAuthorizedRequest(url: URL, method: String = "GET") -> URLRequest? {
-        // ✅ Get token from AuthManager instead of UserDefaults
-        guard let token = AuthManager.shared.getToken() else {
-            print("❌ No auth token found")
-            return nil
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        return request
-    }
-    
     // MARK: - Helper: Handle HTTP Response with 401 Detection
     
     private func handle401IfNeeded(_ statusCode: Int) {
@@ -101,7 +84,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url) else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -166,7 +149,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "POST") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "POST") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -262,7 +245,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "PATCH") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "PATCH") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -350,7 +333,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url, method: "DELETE") else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url, method: "DELETE") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -405,7 +388,7 @@ class PrayOnItAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url) else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }

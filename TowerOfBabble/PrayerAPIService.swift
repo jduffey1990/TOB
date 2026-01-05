@@ -86,23 +86,6 @@ class PrayerAPIService {
     
     private init() {}
     
-    // MARK: - Helper: Create Authorized Request
-    
-    private func createAuthorizedRequest(url: URL, method: String = "GET") -> URLRequest? {
-        // ✅ Get token from AuthManager instead of UserDefaults
-        guard let token = AuthManager.shared.getToken() else {
-            print("❌ No auth token found")
-            return nil
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        return request
-    }
-    
     // MARK: - Helper: Handle HTTP Response with 401 Detection
     
     private func handle401IfNeeded(_ statusCode: Int) {
@@ -122,7 +105,7 @@ class PrayerAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url) else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -198,7 +181,7 @@ class PrayerAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "POST") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "POST") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -322,7 +305,7 @@ class PrayerAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "POST") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "POST") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -429,110 +412,6 @@ class PrayerAPIService {
         }.resume()
     }
     
-    private func generateMockPrayer(
-        items: [String],
-        type: String,
-        tone: String,
-        length: String,
-        expansiveness: String,
-        context: String?
-    ) -> String {
-        
-        // Opening based on tone
-        let opening: String
-        switch tone {
-        case "formal":
-            opening = "Almighty and Everlasting God,"
-        case "contemplative":
-            opening = "In the quiet of this moment, Lord,"
-        case "joyful":
-            opening = "Loving Father, with a heart full of joy,"
-        default: // conversational
-            opening = "Dear Lord,"
-        }
-        
-        // Prayer type specific content
-        let typeContent: String
-        let itemsList = items.joined(separator: ", ")
-        
-        switch type {
-        case "gratitude":
-            typeContent = "I come before you with a heart full of thanksgiving. I am grateful for \(itemsList), and for the countless blessings You have poured into my life."
-        case "intercession":
-            typeContent = "I lift up \(itemsList) to You today. I ask that You would surround them with Your love, provide for their needs, and grant them Your peace."
-        case "petition":
-            typeContent = "I bring my requests before You concerning \(itemsList). I ask for Your guidance, provision, and intervention in these matters."
-        case "confession":
-            typeContent = "I come before You in humility, acknowledging my need for Your grace. I seek Your forgiveness and restoration as I reflect on \(itemsList)."
-        case "praise":
-            typeContent = "I glorify Your name and magnify Your greatness. As I think of \(itemsList), I am reminded of Your faithfulness and Your unchanging love."
-        default:
-            typeContent = "I bring \(itemsList) before You in prayer today."
-        }
-        
-        // Middle content based on expansiveness
-        let middleContent: String
-        switch expansiveness {
-        case "concise":
-            middleContent = context ?? "Grant Your wisdom and peace."
-        case "expansive":
-            let contextual = context ?? "I trust in Your perfect timing and Your sovereign plan"
-            middleContent = """
-            \(contextual)
-            
-            As I meditate on Your word and seek Your face, I am reminded that You are the God who sees, who knows, and who cares deeply for each of us. Your mercies are new every morning, and Your faithfulness extends to all generations.
-            """
-        default: // balanced
-            let contextual = context ?? "I place my trust in You"
-            middleContent = """
-            \(contextual)
-            
-            May Your will be done in all things. Help me to remain steadfast in faith and to trust in Your perfect plan.
-            """
-        }
-        
-        // Length-based extension
-        let lengthExtension: String
-        switch length {
-        case "brief":
-            lengthExtension = ""
-        case "extended":
-            lengthExtension = """
-            
-            Lord, I know that You work all things together for good for those who love You. As I continue to seek Your face and walk in Your ways, I ask that You would strengthen my faith and deepen my trust in You.
-            
-            May Your presence be felt by all those I have lifted up today. Comfort the hurting, guide the lost, and bring hope to the weary.
-            """
-        default: // standard
-            lengthExtension = """
-            
-            Strengthen our hearts and guide our steps as we walk in Your ways.
-            """
-        }
-        
-        // Closing based on tone
-        let closing: String
-        switch tone {
-        case "formal":
-            closing = "We ask this in the name of Christ our Lord, Amen."
-        case "joyful":
-            closing = "With thanksgiving and praise, Amen!"
-        default:
-            closing = "In Your holy name, Amen."
-        }
-        
-        // Assemble prayer
-        return """
-        \(opening)
-        
-        \(typeContent)
-        
-        \(middleContent)\(lengthExtension)
-        
-        \(closing)
-        """
-    }
-    
     // MARK: - Update Prayer
     
     func updatePrayer(id: String, title: String?, text: String?, category: String?, completion: @escaping (Result<Prayer, PrayerAPIError>) -> Void) {
@@ -541,7 +420,7 @@ class PrayerAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "PATCH") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "PATCH") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -618,7 +497,7 @@ class PrayerAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url, method: "DELETE") else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url, method: "DELETE") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -674,7 +553,7 @@ class PrayerAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url) else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }
@@ -744,7 +623,7 @@ class PrayerAPIService {
             return
         }
         
-        guard var request = createAuthorizedRequest(url: url, method: "POST") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "POST") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -829,7 +708,7 @@ class PrayerAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url, method: "POST") else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url, method: "POST") else {
             completion(.failure(.unauthorized))
             return
         }
@@ -894,7 +773,7 @@ class PrayerAPIService {
             return
         }
         
-        guard let request = createAuthorizedRequest(url: url) else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url) else {
             completion(.failure(.unauthorized))
             return
         }

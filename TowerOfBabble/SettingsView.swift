@@ -237,15 +237,15 @@ struct SettingsView: View {
     // MARK: - Helper Methods
     
     private func getCurrentVoiceName() -> String {
-        let voiceIndex = VoiceManager.settings.voiceIndex
+        let voiceIndex = UserSettings.shared.currentVoiceIndex
         
-        // Use the new method that returns VoiceOption objects
-        guard let voice = VoiceManager.getVoiceByIndex(voiceIndex) else {
+        guard let voice = VoiceService.shared.getVoiceByIndex(voiceIndex) else {
             return "Default"
         }
         
         return "\(voice.name) (\(voice.provider.capitalized))"
     }
+
     private var tierName: String {
         guard let stats = prayerManager.prayerStats else { return "Loading..." }
         switch stats.tier.lowercased() {

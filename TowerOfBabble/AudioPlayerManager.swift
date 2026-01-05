@@ -2,10 +2,9 @@
 //  AudioPlayerManager.swift
 //  TowerOfBabble
 //
-//  Created by Jordan Duffey on 1/4/26.
-
+//  Refactored to remove hardcoded playback settings
 //  Handles all audio playback, TTS, and audio state management
-//  Integrates with new backend caching architecture (Redis + S3)
+//  Integrates with backend caching architecture (Redis + S3)
 //
 
 import Foundation
@@ -42,6 +41,10 @@ struct AudioStateResponse: Codable {
 
 class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     
+    // MARK: - Singleton
+    
+    static let shared = AudioPlayerManager()
+    
     // MARK: - Published Properties
     
     @Published var isSpeaking: Bool = false
@@ -56,11 +59,6 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private let apiService = PrayerAPIService.shared
     private var pollingTimer: Timer?
     
-    // Voice settings - injected from VoiceManager
-    private var currentVoice: VoiceOption?
-    private var volume: Float = 1.0
-    private var pitch: Float = 1.0
-    
     // MARK: - Initialization
     
     override init() {
@@ -74,26 +72,13 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     
     // MARK: - Public API
     
-    /// Set the current voice for playback
-    func setVoice(_ voice: VoiceOption?) {
-        self.currentVoice = voice
-    }
-    
-    /// Set playback settings
-    func setPlaybackSettings(volume: Float, pitch: Float) {
-        self.volume = volume
-        self.pitch = pitch
-    }
-    
-    /// Main entry point: Play a prayer
+    /// Main entry point: Play a prayer with specified voice
     func playPrayer(_ prayer: Prayer, voice: VoiceOption) {
         // If already speaking, stop
         if isSpeaking {
             stopSpeaking()
             return
         }
-        
-        currentVoice = voice
         
         print("🎙️ Playing prayer with voice: \(voice.name) (\(voice.provider))")
         
@@ -144,75 +129,62 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     
     /// Is button disabled?
     var isButtonDisabled: Bool {
-        return audioState == .building || isLoading
+        if case .building = audioState {
+            return true
+        }
+        return false
     }
     
-    // MARK: - Backend TTS Flow (New Architecture)
+    // MARK: - Backend TTS Flow
     
-    /// Play prayer using backend TTS with state checking
+    /// Play prayer using backend TTS (Azure/Fish Audio)
     private func playWithBackendTTS(prayer: Prayer, voice: VoiceOption) {
-        isLoading = true
+        let prayerId = prayer.id
+        let voiceId = voice.id
         
-        // Step 1: Check current audio state
-        checkAudioState(prayerId: prayer.id, voiceId: voice.id) { [weak self] state in
-            guard let self = self else { return }
-            
+        // First, check if audio already exists
+        checkAudioState(prayerId: prayerId, voiceId: voiceId) { [weak self] state in
             DispatchQueue.main.async {
-                self.isLoading = false
-                self.audioState = state
+                self?.audioState = state
                 
                 switch state {
                 case .ready(let url):
-                    // Audio exists - play it!
-                    print("✅ Audio ready, playing from S3")
-                    self.playRemoteAudio(url)
-                    self.recordPlayback(prayer)
+                    // Audio ready - play it
+                    self?.playRemoteAudio(url)
+                    self?.recordPlayback(prayer)
                     
                 case .building:
-                    // Audio is building - start polling
-                    print("⏳ Audio building, starting poll")
-                    self.startPolling(prayerId: prayer.id, voiceId: voice.id) { finalUrl in
-                        self.playRemoteAudio(finalUrl)
-                        self.recordPlayback(prayer)
+                    // Generation in progress - start polling
+                    self?.startPolling(prayerId: prayerId, voiceId: voiceId) { finalUrl in
+                        self?.playRemoteAudio(finalUrl)
+                        self?.recordPlayback(prayer)
                     }
                     
                 case .missing:
-                    // Audio doesn't exist - generate it
-                    print("🚀 Audio missing, starting generation")
-                    self.generateAudio(prayerId: prayer.id, voiceId: voice.id, prayer: prayer)
+                    // Need to generate - trigger generation
+                    self?.generateAudio(prayerId: prayerId, voiceId: voiceId, prayer: prayer)
                 }
             }
         }
     }
     
-    // MARK: - Audio State Management
+    // MARK: - Audio State Checking
     
-    /// Check audio state for a prayer + voice combination
-    private func checkAudioState(
-        prayerId: String,
-        voiceId: String,
-        completion: @escaping (AudioState) -> Void
-    ) {
+    /// Check current audio state for a prayer+voice combination
+    func checkAudioState(prayerId: String, voiceId: String, completion: @escaping (AudioState) -> Void) {
         guard let url = URL(string: "\(Config.baseURL)/prayers/\(prayerId)/audio-state?voiceId=\(voiceId)") else {
             completion(.missing)
             return
         }
         
-        guard var request = apiService.createAuthorizedRequest(url: url, method: "GET") else {
+        guard let request = APIClient.shared.createAuthorizedRequest(url: url, method: "GET") else {
             completion(.missing)
             return
         }
         
-        print("🔍 Checking audio state for prayer: \(prayerId), voice: \(voiceId)")
-        
         URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                print("❌ State check error: \(error)")
-                completion(.missing)
-                return
-            }
-            
-            guard let httpResponse = response as? HTTPURLResponse,
+            guard error == nil,
+                  let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200,
                   let data = data else {
                 completion(.missing)
@@ -252,7 +224,7 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
             return
         }
         
-        guard var request = apiService.createAuthorizedRequest(url: url, method: "POST") else {
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "POST") else {
             fallbackToAppleTTS(prayer.text)
             return
         }
@@ -381,7 +353,7 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     // MARK: - Audio Playback
     
     /// Play audio from remote URL (S3)
-    private func playRemoteAudio(_ url: URL) {
+    func playRemoteAudio(_ url: URL) {
         print("🔊 Playing audio from: \(url)")
         isLoading = true
         
@@ -413,7 +385,7 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         do {
             audioPlayer = try AVAudioPlayer(data: data)
             audioPlayer?.prepareToPlay()
-            audioPlayer?.volume = volume
+            audioPlayer?.volume = 1.0  // Full volume
             
             // Set up audio session
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -450,15 +422,16 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     private func speakWithAppleTTS(_ text: String, voice: VoiceOption? = nil) {
         let utterance = AVSpeechUtterance(string: text)
         
-        if let voice = voice ?? currentVoice,
-           voice.provider == "apple" {
+        if let voice = voice, voice.provider == "apple" {
             utterance.voice = AVSpeechSynthesisVoice(identifier: voice.id)
         } else {
             utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         }
         
-        utterance.pitchMultiplier = pitch
-        utterance.volume = volume
+        // Use default iOS speech settings
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
         
         synthesizer.speak(utterance)
     }
@@ -499,22 +472,5 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
         DispatchQueue.main.async {
             self.isSpeaking = false
         }
-    }
-}
-
-// MARK: - Extension for PrayerAPIService (Helper)
-
-extension PrayerAPIService {
-    func createAuthorizedRequest(url: URL, method: String) -> URLRequest? {
-        guard let token = AuthManager.shared.getToken() else {
-            return nil
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        return request
     }
 }

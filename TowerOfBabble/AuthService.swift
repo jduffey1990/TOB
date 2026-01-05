@@ -14,7 +14,7 @@ struct User: Codable {
     let status: String
     let subscriptionTier: String
     let subscriptionExpiresAt: String?
-    let settings: UserSettings  // ✅ FIXED: Properly typed
+    let settings: UserSettingsModel  // ✅ FIXED: Properly typed
     let createdAt: String
     let updatedAt: String
     
@@ -239,7 +239,7 @@ class AuthService {
         let tier = UserDefaults.standard.string(forKey: "userTier") ?? "free"
 
         // Load settings from PrayerManager singleton
-        let settings = PrayerManager.shared.settings
+        let settings = UserSettings.shared.settings
         
         return User(
             id: id,
@@ -265,5 +265,7 @@ class AuthService {
         UserDefaults.standard.removeObject(forKey: "userSubscriptionExpiresAt")
         UserDefaults.standard.removeObject(forKey: "userCreatedAt")
         UserDefaults.standard.removeObject(forKey: "userUpdatedAt")
+        
+        UserSettings.shared.resetToDefaults()
     }
 }

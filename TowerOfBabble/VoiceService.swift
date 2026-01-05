@@ -1,75 +1,71 @@
 //
-//  VoiceManager.swift
+//  VoiceService.swift
 //  TowerOfBabble
 //
-//  Created by Jordan Duffey on 1/4/26.
-//  Handles voice selection, settings, and voice availability
+//  Created by Jordan Duffey on 1/5/26.
+//
+//  Refactored from VoiceManager to be a pure voice API service
+//  Handles voice fetching, availability checking, and voice metadata
+//  Does NOT manage user settings (that's UserSettings.shared)
 //
 
 import Foundation
 import AVFoundation
-import Combine
 
-// MARK: - Voice Manager
+// MARK: - Voice Models
 
-class VoiceManager: ObservableObject {
+struct VoiceOption: Codable {
+    let id: String
+    let name: String
+    let language: String
+    let gender: String
+    let description: String
+    let tier: String
+    let provider: String  // "apple", "azure", "fishaudio"
+}
+
+struct VoicesResponse: Codable {
+    let userTier: String
+    let availableVoices: [VoiceOption]
+    let allVoices: [VoiceOption]
+    let count: VoiceCount
+}
+
+struct VoiceCount: Codable {
+    let available: Int
+    let total: Int
+}
+
+// MARK: - Voice Service
+
+class VoiceService {
     
-    // MARK: - Published Properties
+    // MARK: - Singleton
     
-    @Published var availableVoices: [VoiceOption] = []
-    @Published var allVoices: [VoiceOption] = []
-    @Published var userTier: String = "free"
-    @Published var settings: UserSettings = .defaultSettings
-    @Published var isLoading: Bool = false
-    @Published var errorMessage: String?
+    static let shared = VoiceService()
     
-    // MARK: - Private Properties
+    // MARK: - Properties
     
     private let apiService = PrayerAPIService.shared
-    private let defaults = UserDefaults.standard
-    private let settingsKey = "userSettings"
+    
+    // Cached voice data (refreshed on fetch)
+    private(set) var availableVoices: [VoiceOption] = []
+    private(set) var allVoices: [VoiceOption] = []
+    private(set) var userTier: String = "free"
     
     // MARK: - Initialization
     
-    init() {
-        loadSettings()
-        fetchVoices()
-    }
-    
-    // MARK: - Settings Management
-    
-    func loadSettings() {
-        if let data = defaults.data(forKey: settingsKey),
-           let decoded = try? JSONDecoder().decode(UserSettings.self, from: data) {
-            self.settings = decoded
-            print("💾 Loaded saved settings: voice=\(decoded.voiceIndex)")
-        } else {
-            print("💾 No saved settings found, using defaults")
-        }
-    }
-    
-    func saveSettings() {
-        if let encoded = try? JSONEncoder().encode(settings) {
-            defaults.set(encoded, forKey: settingsKey)
-            print("💾 Settings saved")
-        }
-    }
-    
-    func updateVoiceIndex(_ index: Int) {
-        settings.voiceIndex = index
-        saveSettings()
+    private init() {
+        // Service doesn't auto-fetch on init
+        // Views/managers call fetchVoices() when needed
     }
     
     // MARK: - Voice Fetching
     
+    /// Fetch available voices from backend
     func fetchVoices(completion: ((Result<VoicesResponse, PrayerAPIError>) -> Void)? = nil) {
-        isLoading = true
-        errorMessage = nil
-        
         apiService.fetchVoices { [weak self] result in
             DispatchQueue.main.async {
-                self?.isLoading = false
-                
                 switch result {
                 case .success(let voicesResponse):
                     self?.availableVoices = voicesResponse.availableVoices
@@ -82,7 +78,6 @@ class VoiceManager: ObservableObject {
                     completion?(.success(voicesResponse))
                     
                 case .failure(let error):
-                    self?.errorMessage = error.localizedDescription
                     print("❌ Failed to fetch voices: \(error)")
                     
                     // Fallback to Apple voices if backend fails
@@ -94,22 +89,24 @@ class VoiceManager: ObservableObject {
         }
     }
     
-    // MARK: - Voice Selection
+    // MARK: - Voice Selection & Queries
     
-    /// Get currently selected voice
-    var currentVoice: VoiceOption? {
-        return getVoiceByIndex(settings.voiceIndex)
+    /// Get voice by index (uses current voiceIndex from UserSettings)
+    func getCurrentVoice() -> VoiceOption? {
+        let index = UserSettings.shared.currentVoiceIndex
+        return getVoiceByIndex(index)
     }
     
-    /// Get voice by index
+    /// Get voice by specific index
     func getVoiceByIndex(_ index: Int) -> VoiceOption? {
         guard index >= 0 && index < availableVoices.count else {
+            print("⚠️ Voice index \(index) out of range (0..<\(availableVoices.count))")
             return nil
         }
         return availableVoices[index]
     }
     
-    /// Get voice display names for picker
+    /// Get voice display names for picker UI
     func getVoiceDisplayNames() -> [String] {
         return availableVoices.map { voice in
             "\(voice.name) (\(voice.provider.capitalized))"
@@ -123,14 +120,24 @@ class VoiceManager: ObservableObject {
     
     /// Get upgrade message for locked voice
     func getUpgradeMessage(for voice: VoiceOption) -> String {
-        switch voice.tier {
+        switch voice.tier.lowercased() {
         case "pro":
             return "This voice requires a Pro subscription"
-        case "warrior":
+        case "warrior", "lifetime":
             return "This voice requires a Prayer Warrior subscription"
         default:
             return "This voice is not available in your current plan"
         }
+    }
+    
+    /// Get tier badge info for UI
+    func getTierBadge(for voiceIndex: Int) -> (text: String, color: String)? {
+        if voiceIndex > 2 && voiceIndex <= 5 {
+            return ("• Pro", "blue")
+        } else if voiceIndex > 5 {
+            return ("• Warrior", "purple")
+        }
+        return nil
     }
     
     // MARK: - Fallback Apple Voices
@@ -221,11 +228,8 @@ class VoiceManager: ObservableObject {
         }
     }
     
-    // MARK: - Voice Preview (Optional)
+    // MARK: - Voice Preview (Optional for future use)
     
     /// Preview text for voice testing
     let previewText = "The Lord is my shepherd; I shall not want."
-    
-    // You can add a preview method here if needed
-    // func previewVoice(_ voice: VoiceOption) { ... }
 }

@@ -38,6 +38,7 @@ class AuthManager: ObservableObject {
     // MARK: - Auth State Management
     
     /// Load saved authentication state from UserDefaults on app launch
+    /// Load saved authentication state from UserDefaults on app launch
     private func loadAuthState() {
         guard let token = UserDefaults.standard.string(forKey: tokenKey),
               let userId = UserDefaults.standard.string(forKey: userIdKey),
@@ -47,17 +48,12 @@ class AuthManager: ObservableObject {
             return
         }
         
-        // Load user with settings from PrayerManager (which loads from UserDefaults)
         let status = UserDefaults.standard.string(forKey: userStatusKey) ?? "active"
         let tier = UserDefaults.standard.string(forKey: userTierKey) ?? "free"
         let subscriptionExpiresAt = UserDefaults.standard.string(forKey: userSubscriptionExpiresAtKey)
         
-        // PrayerManager will load the same settings when it initializes
-        var loadedSettings = UserSettings.defaultSettings
-        if let settingsData = UserDefaults.standard.data(forKey: "userSettings"),
-           let decodedSettings = try? JSONDecoder().decode(UserSettings.self, from: settingsData) {
-            loadedSettings = decodedSettings
-        }
+        // ✅ CHANGED: UserSettings loads itself on init, no need to manually load here
+        let loadedSettings = UserSettings.shared.settings
         
         self.authToken = token
         self.currentUser = User(
@@ -67,7 +63,7 @@ class AuthManager: ObservableObject {
             status: status,
             subscriptionTier: tier,
             subscriptionExpiresAt: subscriptionExpiresAt,
-            settings: loadedSettings, // Load from PrayerManager
+            settings: loadedSettings,
             createdAt: "",
             updatedAt: ""
         )
@@ -89,9 +85,8 @@ class AuthManager: ObservableObject {
             UserDefaults.standard.set(expiresAt, forKey: userSubscriptionExpiresAtKey)
         }
         
-        // ✅ Load user's settings from backend into VoiceManager
-        VoiceManager.shared.settings = user.settings
-        VoiceManager.shared.saveSettings() // This saves to UserDefaults under "userSettings"
+        // ✅ NEW: Sync user's settings to UserSettings manager
+        UserSettings.shared.syncFromUser(user)
         
         // Update in-memory state
         self.authToken = token
