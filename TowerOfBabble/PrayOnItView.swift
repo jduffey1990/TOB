@@ -125,21 +125,21 @@ struct PrayOnItView: View {
                 .padding(.vertical, 8)
             }
             
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("🐛 DEBUG INFO")
-                        .font(.headline)
-                    Text("Can create: \(manager.canCreateMoreItems ? "✅ YES" : "❌ NO")")
-                    Text("Current count: \(manager.currentCount)")
-                    Text("Limit: \(manager.limit?.description ?? "nil (unlimited)")")
-                    Text("Tier: \(manager.stats?.tier ?? "unknown")")
-                    Text("Backend canCreate: \(manager.stats?.items.canCreate.description ?? "unknown")")
-                    Text("Remaining: \(manager.stats?.items.remaining?.description ?? "nil")")
-                }
-                .font(.body)
-                .padding(.vertical, 4)
-            }
-            .listRowBackground(Color.yellow.opacity(0.2))
+//            Section {
+//                VStack(alignment: .leading, spacing: 8) {
+//                    Text("🐛 DEBUG INFO")
+//                        .font(.headline)
+//                    Text("Can create: \(manager.canCreateMoreItems ? "✅ YES" : "❌ NO")")
+//                    Text("Current count: \(manager.currentCount)")
+//                    Text("Limit: \(manager.limit?.description ?? "nil (unlimited)")")
+//                    Text("Tier: \(manager.stats?.tier ?? "unknown")")
+//                    Text("Backend canCreate: \(manager.stats?.items.canCreate.description ?? "unknown")")
+//                    Text("Remaining: \(manager.stats?.items.remaining?.description ?? "nil")")
+//                }
+//                .font(.body)
+//                .padding(.vertical, 4)
+//            }
+//            .listRowBackground(Color.yellow.opacity(0.2))
             
             // Grouped by category
             ForEach(PrayOnItItem.Category.allCases, id: \.self) { category in

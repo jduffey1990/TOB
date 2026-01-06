@@ -16,6 +16,7 @@ import AVFoundation
 struct VoiceSelectionView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject private var userSettings = UserSettings.shared
+    @ObservedObject private var previewManager = VoicePreviewManager.shared 
     @State private var voiceService = VoiceService.shared
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -65,55 +66,69 @@ struct VoiceSelectionView: View {
     
     @ViewBuilder
     private func voiceButton(for item: VoiceItem) -> some View {
-        Button(action: {
-            if !item.isLocked {
-                selectVoice(item.index)
-            }
-        }) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.voice.name)
-                        .font(.body)
-                        .foregroundColor(item.isLocked ? .gray : .primary)
-                    
-                    HStack(spacing: 4) {
-                        Text(item.voice.language)
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.voice.name)
+                    .foregroundColor(item.isLocked ? .gray : .primary)
+
+                HStack(spacing: 4) {
+                    Text(item.voice.language)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    if let tierBadge = voiceService.getTierBadge(for: item.index) {
+                        Text(tierBadge.text)
                             .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        if let tierBadge = voiceService.getTierBadge(for: item.index) {
-                            Text(tierBadge.text)
-                                .font(.caption)
-                                .foregroundColor(tierBadge.color == "blue" ? .blue : .purple)
-                        }
+                            .foregroundColor(tierBadge.color == "blue" ? .blue : .purple)
                     }
                 }
-                
-                Spacer()
-                
-                if item.isLocked {
-                    Image(systemName: "lock.fill")
-                        .foregroundColor(.gray)
-                        .font(.caption)
-                } else if item.isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.blue)
-                }
             }
-            .padding(.vertical, 4)
+
+            Spacer()
+
+            // ✅ Play button ALWAYS tappable
+            if item.voice.provider == "apple" || item.voice.file != nil {
+                Button {
+                    previewManager.previewVoice(item.voice)
+                } label: {
+                    Image(systemName:
+                        previewManager.currentPlayingVoiceId == item.voice.id && previewManager.isPlaying
+                        ? "stop.circle.fill"
+                        : "play.circle.fill"
+                    )
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                }
+                .buttonStyle(BorderlessButtonStyle())
+            }
+
+            if item.isLocked {
+                Image(systemName: "lock.fill")
+                    .foregroundColor(.gray)
+                    .font(.caption)
+            } else if item.isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.blue)
+            }
         }
-        .disabled(item.isLocked || isSaving || userSettings.isLoading)
+        .contentShape(Rectangle()) // makes whole row tappable
+        .onTapGesture {
+            guard !item.isLocked else { return }
+            selectVoice(item.index)
+        }
         .opacity((isSaving || userSettings.isLoading) ? 0.6 : 1.0)
     }
+
     
     // MARK: - Computed Properties
     
     private var voiceItems: [VoiceItem] {
-        voiceService.availableVoices.enumerated().map { index, voice in
+        // Change this line:
+        voiceService.allVoices.enumerated().map { index, voice in
             VoiceItem(
                 index: index,
                 voice: voice,
-                isLocked: index > maxVoiceIndex,
+                isLocked: voiceService.isVoiceLocked(voice), // Use the service's helper
                 isSelected: index == userSettings.currentVoiceIndex
             )
         }

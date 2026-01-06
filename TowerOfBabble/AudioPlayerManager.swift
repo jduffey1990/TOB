@@ -172,6 +172,14 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     
     /// Check current audio state for a prayer+voice combination
     func checkAudioState(prayerId: String, voiceId: String, completion: @escaping (AudioState) -> Void) {
+        let voiceIndex = UserSettings.shared.currentVoiceIndex
+        
+        if let voice = VoiceService.shared.getVoiceByIndex(voiceIndex),
+               voice.provider == "apple" {
+                completion(.missing)
+                return
+            }
+        
         guard let url = URL(string: "\(Config.baseURL)/prayers/\(prayerId)/audio-state?voiceId=\(voiceId)") else {
             completion(.missing)
             return

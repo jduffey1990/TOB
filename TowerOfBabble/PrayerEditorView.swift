@@ -25,8 +25,7 @@ struct PrayerEditorView: View {
     @State private var showingError: Bool = false
     @State private var errorMessage: String = ""
     @State private var isSaving: Bool = false
-    @State private var audioState: PrayerAudioState = .missing
-    @State private var pollingTimer: Timer?
+    
     private var isImmutable: Bool {
         prayer != nil
     }
@@ -111,10 +110,6 @@ struct PrayerEditorView: View {
                     fetchAudioState()
                 }
             }
-            .onDisappear {
-                pollingTimer?.invalidate()
-            }
-
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {
                     showingError = false
@@ -126,32 +121,55 @@ struct PrayerEditorView: View {
     }
         
     private var actionButtonLabel: some View {
-        switch audioState {
-        case .missing:
-            return AnyView(Label("Generate Audio", systemImage: "waveform"))
-        case .building:
-            return AnyView(Label("Building Audio…", systemImage: "hourglass"))
-        case .ready:
+        // For Apple TTS, check isSpeaking state
+        let voice = VoiceService.shared.getCurrentVoice()
+        let isAppleTTS = voice?.provider == "apple"
+        
+        if isAppleTTS {
+            // Apple TTS: Show Play/Stop based on speaking state
             return AnyView(
                 Label(
-                    prayerManager.isSpeaking ? "Stop" : "Play",
-                    systemImage: prayerManager.isSpeaking ? "stop.circle" : "play.circle"
+                    audioPlayer.isSpeaking ? "Stop" : "Play",
+                    systemImage: audioPlayer.isSpeaking ? "stop.circle" : "play.circle"
                 )
             )
+        } else {
+            // Backend TTS: Show state-based labels
+            switch audioPlayer.audioState {
+            case .missing:
+                return AnyView(Label("Generate Audio", systemImage: "waveform"))
+            case .building:
+                return AnyView(Label("Building Audio…", systemImage: "hourglass"))
+            case .ready:
+                return AnyView(
+                    Label(
+                        audioPlayer.isSpeaking ? "Stop" : "Play",
+                        systemImage: audioPlayer.isSpeaking ? "stop.circle" : "play.circle"
+                    )
+                )
+            }
         }
     }
     private var isActionButtonDisabled: Bool {
-        if case .building = audioState { return true }
+        if case .building = audioPlayer.audioState { return true }
         return isSaving
     }
 
     private var actionButtonColor: Color {
-        switch audioState {
-        case .missing: return .blue
-        case .building: return .gray
-        case .ready: return prayerManager.isSpeaking ? .red : .green
+        let voice = VoiceService.shared.getCurrentVoice()
+        let isAppleTTS = voice?.provider == "apple"
+        
+        if isAppleTTS {
+            return audioPlayer.isSpeaking ? .red : .green
+        } else {
+            switch audioPlayer.audioState {
+            case .missing: return .blue
+            case .building: return .gray
+            case .ready: return audioPlayer.isSpeaking ? .red : .green
+            }
         }
     }
+
 
     
     private func savePrayer() {
@@ -211,51 +229,36 @@ struct PrayerEditorView: View {
     private func fetchAudioState() {
         guard let prayer = prayer else { return }
         guard let voice = VoiceService.shared.getCurrentVoice() else { return }
-
+        
+        // This will update audioPlayer.audioState
         audioPlayer.checkAudioState(prayerId: prayer.id, voiceId: voice.id) { state in
-            DispatchQueue.main.async {
-                // Convert AudioState to PrayerAudioState
-                switch state {
-                case .missing: self.audioState = .missing
-                case .building: self.audioState = .building
-                case .ready(let url): self.audioState = .ready(url)
-                }
-
-                if case .building = self.audioState {
-                    self.startPolling()
-                }
-            }
+            // The state is already published by audioPlayer
+            // No need to set local state
         }
     }
-    private func startPolling() {
-        if pollingTimer != nil { return }
-
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            fetchAudioState()
-        }
-    }
+    
     private func handleActionButton() {
         guard let prayer = prayer else { return }
-        guard let voice = VoiceService.shared.getCurrentVoice() else { return }
-
-        switch audioState {
-        case .missing:
-            audioPlayer.playPrayer(prayer, voice: voice)  // ✅ This triggers generation
-            audioState = .building
-            startPolling()
-
-        case .building:
+        
+        // If speaking, stop (works for both Apple and backend TTS)
+        if audioPlayer.isSpeaking {
+            audioPlayer.stopSpeaking()
             return
-
+        }
+        
+        guard let voice = VoiceService.shared.getCurrentVoice() else { return }
+        
+        // Play based on current state
+        switch audioPlayer.audioState {
+        case .missing, .building:
+            // Play will handle generation if needed
+            audioPlayer.playPrayer(prayer, voice: voice)
+            
         case .ready(let url):
-            if audioPlayer.isSpeaking {
-                audioPlayer.stopSpeaking()
-            } else {
-                audioPlayer.playRemoteAudio(url)
-            }
+            // Audio is ready, just play it
+            audioPlayer.playRemoteAudio(url)
         }
     }
-
 
 
 

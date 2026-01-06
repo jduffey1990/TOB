@@ -22,6 +22,7 @@ struct VoiceOption: Codable {
     let description: String
     let tier: String
     let provider: String  // "apple", "azure", "fishaudio"
+    let file: String?
 }
 
 struct VoicesResponse: Codable {
@@ -154,7 +155,8 @@ class VoiceService {
                 gender: inferGender(from: avVoice.name),
                 description: "Apple \(avVoice.name)",
                 tier: "free",
-                provider: "apple"
+                provider: "apple",
+                file: nil
             )
         }
         
@@ -231,5 +233,5 @@ class VoiceService {
     // MARK: - Voice Preview (Optional for future use)
     
     /// Preview text for voice testing
-    let previewText = "The Lord is my shepherd; I shall not want."
+    let previewText = "Have your prayers read in my voice."
 }

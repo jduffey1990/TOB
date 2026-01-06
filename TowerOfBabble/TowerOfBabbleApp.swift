@@ -30,10 +30,14 @@ struct TowerOfBabbleApp: App {
                     if authManager.isAuthenticated {
                         MainTabView()
                             .transition(.opacity)
+                            .onAppear {
+                                VoiceService.shared.fetchVoices()
+                            }
                     } else {
                         AuthView(onAuthSuccess: {
                             // Auth state automatically updates via @Published
                             // No need to manually set isAuthenticated
+                            VoiceService.shared.fetchVoices()
                         })
                         .transition(.opacity)
                     }
