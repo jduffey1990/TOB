@@ -28,9 +28,12 @@ struct PrayOnItView: View {
             .navigationTitle("Pray On It")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingAddItem = true }) {
+                    Button {
+                        showingAddItem = true
+                    } label: {
                         Image(systemName: "plus")
                     }
+                    .tint(.blue)
                     .disabled(!manager.canCreateMoreItems)
                 }
             }

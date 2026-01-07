@@ -20,6 +20,10 @@ struct MainTabView: View {
     @State private var showingOutOfAISheet = false
     @State private var upgradeReason: UpgradeReason = .premiumFeature
     
+    private var isAddPrayerDisabled: Bool {
+        selectedTab == 1
+    }
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             // Main content based on selected tab
@@ -39,9 +43,10 @@ struct MainTabView: View {
                     .tag(3)
                 
                 // Tab 4: My Prayers
-                PrayersListView()
+                PrayersListView(selectedTab: $selectedTab)
                     .environmentObject(prayerManager)
                     .tag(4)
+
                 
                 // Tab 5: Settings
                 SettingsView()
@@ -207,14 +212,15 @@ struct MainTabView: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: -2)
         )
         .overlay(
-            // Floating + button
             Button(action: {
+                guard !isAddPrayerDisabled else { return }
+
                 if !prayerManager.canCreateMorePrayers {
-                    upgradeReason = .prayerLimitReached  // Set reason
+                    upgradeReason = .prayerLimitReached
                     showingUpgradeSheet = true
                     return
                 }
-                
+
                 if !prayerManager.hasAICredits {
                     upgradeReason = .aiCreditsExhausted
                     showingOutOfAISheet = true
@@ -228,12 +234,22 @@ struct MainTabView: View {
                     .frame(width: 56, height: 56)
                     .background(
                         Circle()
-                            .fill(Color.blue)
-                            .shadow(color: Color.blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                            .fill(isAddPrayerDisabled ? Color.gray : Color.blue)
+                            .shadow(
+                                color: isAddPrayerDisabled
+                                    ? Color.black.opacity(0.1)
+                                    : Color.blue.opacity(0.3),
+                                radius: 8,
+                                x: 0,
+                                y: 4
+                            )
                     )
+                    .opacity(isAddPrayerDisabled ? 0.6 : 1.0)
             }
-            .offset(y: -32) // Raise it above the tab bar
+            .disabled(isAddPrayerDisabled)
+            .offset(y: -32)
         )
+
     }
 }
 

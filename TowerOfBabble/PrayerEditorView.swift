@@ -107,8 +107,15 @@ struct PrayerEditorView: View {
                 if let prayer = prayer {
                     title = prayer.title
                     text = prayer.text
+
+                    // ✅ Reset audio state before fetching
+                    audioPlayer.audioState = .missing
+
                     fetchAudioState()
                 }
+            }
+            .onDisappear {
+                audioPlayer.stopSpeaking()
             }
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {

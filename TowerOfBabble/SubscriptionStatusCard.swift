@@ -109,6 +109,41 @@ struct SubscriptionStatusCard: View {
                 .frame(height: 8)
             }
             
+            // AI Generation stats
+            if let ai = aiStats {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Label("AI Generations", systemImage: "sparkles")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
+                        Text(ai.displayText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // Progress bar (only if capped)
+                    if let _ = ai.limit {
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(height: 6)
+                                
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(aiProgressColor)
+                                    .frame(width: geometry.size.width * aiProgress, height: 6)
+                                    .animation(.easeInOut, value: aiProgress)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                }
+            }
+
+            
             // Upgrade CTA (only for free tier)
             if shouldShowUpgrade {
                 Button(action: onUpgradeTapped) {
@@ -173,6 +208,26 @@ struct SubscriptionStatusCard: View {
             return "Upgrade to Pro for 50 prayers"
         }
     }
+    
+    private var aiStats: PrayerStatsResponse.AIGenerationStats? {
+        stats?.aiGenerations
+    }
+
+    private var aiProgress: Double {
+        guard let limit = aiStats?.limit, limit > 0 else { return 1.0 }
+        return Double(aiStats?.current ?? 0) / Double(limit)
+    }
+
+    private var aiProgressColor: Color {
+        if aiProgress >= 1.0 {
+            return .red
+        } else if aiProgress >= 0.8 {
+            return .orange
+        } else {
+            return .green
+        }
+    }
+
 }
 
 // MARK: - Preview
@@ -180,7 +235,8 @@ struct SubscriptionStatusCard: View {
 struct SubscriptionStatusCard_Previews: PreviewProvider {
     static var previews: some View {
         VStack(spacing: 20) {
-            // Free tier at limit
+
+            // Free tier at prayer limit
             SubscriptionStatusCard(
                 stats: PrayerStatsResponse(
                     tier: "free",
@@ -191,11 +247,18 @@ struct SubscriptionStatusCard_Previews: PreviewProvider {
                         limit: 5,
                         remaining: 0,
                         canCreate: false
+                    ),
+                    aiGenerations: PrayerStatsResponse.AIGenerationStats(
+                        current: 3,
+                        limit: 3,
+                        remaining: 0,
+                        canGenerate: false,
+                        period: "monthly"
                     )
                 ),
                 onUpgradeTapped: {}
             )
-            
+
             // Free tier with room
             SubscriptionStatusCard(
                 stats: PrayerStatsResponse(
@@ -207,11 +270,18 @@ struct SubscriptionStatusCard_Previews: PreviewProvider {
                         limit: 5,
                         remaining: 3,
                         canCreate: true
+                    ),
+                    aiGenerations: PrayerStatsResponse.AIGenerationStats(
+                        current: 1,
+                        limit: 3,
+                        remaining: 2,
+                        canGenerate: true,
+                        period: "monthly"
                     )
                 ),
                 onUpgradeTapped: {}
             )
-            
+
             // Pro tier
             SubscriptionStatusCard(
                 stats: PrayerStatsResponse(
@@ -220,15 +290,45 @@ struct SubscriptionStatusCard_Previews: PreviewProvider {
                     expiresAt: nil,
                     prayers: PrayerStatsResponse.PrayerStats(
                         current: 12,
-                        limit: 50,
-                        remaining: 38,
+                        limit: 20,
+                        remaining: 8,
                         canCreate: true
+                    ),
+                    aiGenerations: PrayerStatsResponse.AIGenerationStats(
+                        current: 7,
+                        limit: 20,
+                        remaining: 13,
+                        canGenerate: true,
+                        period: "monthly"
                     )
                 ),
                 onUpgradeTapped: {}
             )
-            
-            // Prayer Warrior (unlimited)
+
+            // Prayer Warrior (daily AI cap)
+            SubscriptionStatusCard(
+                stats: PrayerStatsResponse(
+                    tier: "warrior",
+                    isActive: true,
+                    expiresAt: nil,
+                    prayers: PrayerStatsResponse.PrayerStats(
+                        current: 42,
+                        limit: 100,
+                        remaining: 58,
+                        canCreate: true
+                    ),
+                    aiGenerations: PrayerStatsResponse.AIGenerationStats(
+                        current: 3,
+                        limit: 3,
+                        remaining: 0,
+                        canGenerate: false,
+                        period: "daily"
+                    )
+                ),
+                onUpgradeTapped: {}
+            )
+
+            // Lifetime (unlimited)
             SubscriptionStatusCard(
                 stats: PrayerStatsResponse(
                     tier: "lifetime",
@@ -239,13 +339,21 @@ struct SubscriptionStatusCard_Previews: PreviewProvider {
                         limit: nil,
                         remaining: nil,
                         canCreate: true
+                    ),
+                    aiGenerations: PrayerStatsResponse.AIGenerationStats(
+                        current: 12,
+                        limit: nil,
+                        remaining: nil,
+                        canGenerate: true,
+                        period: "monthly"
                     )
                 ),
                 onUpgradeTapped: {}
             )
-            
+
             Spacer()
         }
         .background(Color(.systemGroupedBackground))
     }
 }
+

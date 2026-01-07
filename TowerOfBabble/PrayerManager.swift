@@ -11,7 +11,7 @@ import Combine
 
 // MARK: - Prayer Model
 
-struct Prayer: Identifiable, Codable {
+struct Prayer: Identifiable, Codable, Hashable {
     let id: String  // String ID from backend
     let userId: String
     var title: String
@@ -229,22 +229,71 @@ class PrayerManager: ObservableObject {
     /// Check if user can create more prayers based on their tier limit
     var canCreateMorePrayers: Bool {
         guard let stats = prayerStats else {
-            return true // If we don't have stats yet, allow (will be validated by backend)
+            return true // Allow until stats load, backend will validate
         }
         
-        // If there's no limit (pro/lifetime), always allow
-        guard let limit = stats.prayers.limit else {
-            return true
-        }
-        
-        // Check if under limit
-        return stats.prayers.current < limit
+        return stats.prayers.canCreate  // ✅ Trust the backend calculation
     }
     
-    /// Check if user has AI generation credits available
-    var hasAICredits: Bool {
-        return true
-    }
+    // MARK: - AI Credits (UPDATED)
+        
+        /// Check if user has AI generation credits available
+        /// ✅ Now uses backend data instead of hardcoded true
+        var hasAICredits: Bool {
+            guard let stats = prayerStats else {
+                return true // Allow until stats load (backend will validate)
+            }
+            
+            return stats.aiGenerations.canGenerate
+        }
+        
+        /// Get AI credits display text for UI
+        var aiCreditsText: String {
+            guard let stats = prayerStats else {
+                return "Loading..."
+            }
+            
+            return stats.aiGenerations.displayText
+        }
+        
+        /// Get remaining AI credits for display
+        var aiCreditsRemaining: Int? {
+            return prayerStats?.aiGenerations.remaining
+        }
+        
+        /// Check if user needs to wait for daily rollover (Prayer Warrior only)
+        var isWaitingForDailyRollover: Bool {
+            guard let stats = prayerStats else { return false }
+            
+            return stats.aiGenerations.period == "daily"
+                && !stats.aiGenerations.canGenerate
+        }
+        
+        /// Get user-friendly message about AI credits
+        var aiCreditsMessage: String? {
+            guard let stats = prayerStats else { return nil }
+            
+            if stats.aiGenerations.canGenerate {
+                // Show how many they have left
+                if let remaining = stats.aiGenerations.remaining {
+                    return "\(remaining) AI generation\(remaining == 1 ? "" : "s") remaining \(stats.aiGenerations.periodDisplay)"
+                } else {
+                    return "Unlimited AI generations available"
+                }
+            } else {
+                // They're out - show upgrade or wait message
+                if stats.tier == "prayer_warrior" && stats.aiGenerations.period == "daily" {
+                    return "You've used all 3 AI generations today. They'll refresh tomorrow!"
+                } else if stats.tier == "free" {
+                    return "You've used all 3 free AI generations this month. Upgrade to Pro for 20 per month!"
+                } else if stats.tier == "pro" {
+                    return "You've used all 20 AI generations this month. Upgrade to Prayer Warrior for 3 daily generations!"
+                } else {
+                    return "AI generation limit reached."
+                }
+            }
+        }
+
     
     // MARK: - Playback (Delegates to AudioPlayerManager)
     

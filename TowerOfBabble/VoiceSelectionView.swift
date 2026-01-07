@@ -60,6 +60,9 @@ struct VoiceSelectionView: View {
         .onAppear {
             loadPrayerStats()
         }
+        .onDisappear {
+            previewManager.stop()
+        }
     }
     
     // MARK: - View Builders

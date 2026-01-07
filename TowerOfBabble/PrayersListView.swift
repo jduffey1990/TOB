@@ -10,7 +10,9 @@
 import SwiftUI
 
 struct PrayersListView: View {
+    @Binding var selectedTab: Int
     @ObservedObject private var prayerManager = PrayerManager.shared
+    @State private var navigationPath = NavigationPath()
     @State private var showingNewPrayer = false
     @State private var showingLogoutAlert = false
     @State private var showingUpgradeSheet = false
@@ -30,44 +32,23 @@ struct PrayersListView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $navigationPath) {
             ZStack {
-                // Main content
                 mainContent
             }
             .navigationTitle("My Prayers")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    userMenu
-                }
-            }
-            .sheet(isPresented: $showingNewPrayer) {
-                PrayerEditorView(prayer: nil)
+            .navigationDestination(for: Prayer.self) { prayer in
+                PrayerEditorView(prayer: prayer)
                     .environmentObject(prayerManager)
             }
-            .sheet(isPresented: $showingUpgradeSheet) {
-                UpgradePlaceholderView(reason: upgradeReason)
+            .onAppear {
+                navigationPath = NavigationPath()
             }
-            .alert("Logout", isPresented: $showingLogoutAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Logout", role: .destructive) {
-                    logout()
+            .onChange(of: selectedTab) { tab in
+                if tab == 4 {
+                    navigationPath = NavigationPath()
                 }
-            } message: {
-                Text("Are you sure you want to logout?")
-            }
-            .alert("Error", isPresented: .constant(prayerManager.errorMessage != nil)) {
-                Button("OK") {
-                    prayerManager.errorMessage = nil
-                }
-            } message: {
-                if let error = prayerManager.errorMessage {
-                    Text(error)
-                }
-            }
-            .refreshable {
-                prayerManager.refresh()
             }
         }
         .searchable(text: $searchText, prompt: "Search prayers...")
@@ -187,22 +168,17 @@ struct PrayersListView: View {
     }
     
     private func prayerRow(_ prayer: Prayer, highlightSearch: Bool = false) -> some View {
-        NavigationLink(destination:
-            PrayerEditorView(prayer: prayer)
-                .environmentObject(prayerManager)
-        ) {
+        NavigationLink(value: prayer) {
             VStack(alignment: .leading, spacing: 5) {
                 if highlightSearch && !searchText.isEmpty {
-                    // Highlight matching text in title
                     highlightedText(prayer.title, highlight: searchText)
                         .font(.headline)
                 } else {
                     Text(prayer.title)
                         .font(.headline)
                 }
-                
+
                 if highlightSearch && !searchText.isEmpty {
-                    // Highlight matching text in body
                     highlightedText(prayer.text, highlight: searchText)
                         .font(.subheadline)
                         .foregroundColor(.gray)
@@ -217,7 +193,6 @@ struct PrayersListView: View {
             .padding(.vertical, 5)
         }
     }
-    
     // Helper to highlight search text
     private func highlightedText(_ text: String, highlight: String) -> Text {
         var result = Text("")
@@ -445,7 +420,16 @@ struct FeatureRow: View {
 }
 
 struct PrayersListView_Previews: PreviewProvider {
+    struct PreviewWrapper: View {
+        @State var selectedTab: Int = 4
+
+        var body: some View {
+            PrayersListView(selectedTab: $selectedTab)
+        }
+    }
+
     static var previews: some View {
-        PrayersListView()
+        PreviewWrapper()
     }
 }
+

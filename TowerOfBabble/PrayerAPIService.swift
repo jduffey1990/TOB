@@ -19,12 +19,35 @@ struct PrayerStatsResponse: Codable {
     let isActive: Bool
     let expiresAt: String?
     let prayers: PrayerStats
+    let aiGenerations: AIGenerationStats  // ⭐ NEW!
     
     struct PrayerStats: Codable {
         let current: Int
         let limit: Int?
         let remaining: Int?
         let canCreate: Bool
+    }
+    
+    // ⭐ NEW: AI Generation stats
+    struct AIGenerationStats: Codable {
+        let current: Int
+        let limit: Int?         // null = unlimited
+        let remaining: Int?     // null = unlimited
+        let canGenerate: Bool
+        let period: String      // "daily" or "monthly"
+        
+        // Helper for UI display
+        var displayText: String {
+            if let limit = limit {
+                return "\(current)/\(limit) AI generations this \(period == "daily" ? "day" : "month")"
+            } else {
+                return "\(current) AI generations (unlimited)"
+            }
+        }
+        
+        var periodDisplay: String {
+            period == "daily" ? "today" : "this month"
+        }
     }
 }
 

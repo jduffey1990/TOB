@@ -3,9 +3,9 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/11/25.
-//  Updated by Claude on 12/18/25
+//  Updated by Claude on 01/06/26
 //
-//  AI-powered prayer builder with advanced options
+//  AI-powered prayer builder with intention limits
 //
 
 import SwiftUI
@@ -16,58 +16,72 @@ struct AddPrayerView: View {
     @Environment(\.dismiss) var dismiss
     
     @State private var selectedIntentions: Set<String> = []
+    @State private var prayerLength: PrayerLength = .standard
     @State private var prayerType: PrayerType = .gratitude
     @State private var tone: PrayerTone = .conversational
-    @State private var prayerLength: PrayerLength = .standard
-    @State private var expansiveness: PrayerExpansiveness = .balanced
     @State private var customContext: String = ""
     @State private var generatedPrayer: String = ""
     @State private var isGenerating: Bool = false
-    @State private var showAdvancedOptions: Bool = false
     @State private var errorMessage: String?
+    @State private var showIntentionLimitAlert: Bool = false
+    
+    // Computed property for max intentions based on length
+    private var maxIntentions: Int {
+        switch prayerLength {
+        case .brief: return 3
+        case .standard: return 5
+        case .extended: return Int.max // Unlimited
+        }
+    }
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Step 1: Select Intentions
+                    // Step 1: Prayer Length
                     stepSection(
                         number: 1,
+                        title: "How long should your prayer be?",
+                        icon: "clock"
+                    ) {
+                        lengthPicker
+                    }
+                    
+                    // Step 2: Select Intentions
+                    stepSection(
+                        number: 2,
                         title: "Who/What are you praying for?",
                         icon: "person.3"
                     ) {
                         intentionsSelector
                     }
                     
-                    // Step 2: Prayer Type
+                    // Step 3: Prayer Type
                     stepSection(
-                        number: 2,
+                        number: 3,
                         title: "What type of prayer?",
                         icon: "list.bullet"
                     ) {
                         prayerTypePicker
                     }
                     
-                    // Step 3: Tone
+                    // Step 4: Tone
                     stepSection(
-                        number: 3,
+                        number: 4,
                         title: "What tone?",
                         icon: "waveform"
                     ) {
                         tonePicker
                     }
                     
-                    // Step 4: Custom Context
+                    // Step 5: Custom Context
                     stepSection(
-                        number: 4,
+                        number: 5,
                         title: "Additional context (optional)",
                         icon: "text.alignleft"
                     ) {
                         customContextField
                     }
-                    
-                    // Advanced Options (Collapsible)
-                    advancedOptionsSection
                     
                     // AI Preview Text
                     aiPreviewText
@@ -93,6 +107,11 @@ struct AddPrayerView: View {
                         dismiss()
                     }
                 }
+            }
+            .alert("Intention Limit Reached", isPresented: $showIntentionLimitAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("To use more than \(maxIntentions) 'Pray On Its', please increase to \(prayerLength == .brief ? "Standard or Extended" : "Extended") length.")
             }
         }
     }
@@ -130,11 +149,78 @@ struct AddPrayerView: View {
         }
     }
     
+    private var lengthPicker: some View {
+        VStack(spacing: 8) {
+            ForEach(PrayerLength.allCases, id: \.self) { length in
+                Button(action: {
+                    prayerLength = length
+                    // If changing to a more restrictive length, trim selections
+                    if selectedIntentions.count > maxIntentions {
+                        // Keep only the first N selections
+                        let itemsToKeep = Array(selectedIntentions.prefix(maxIntentions))
+                        selectedIntentions = Set(itemsToKeep)
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: prayerLength == length ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(.blue)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(length.displayName)
+                                .foregroundColor(.primary)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text(length.description)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(
+                        prayerLength == length ?
+                        Color.blue.opacity(0.1) :
+                        Color(.systemGray6)
+                    )
+                    .cornerRadius(12)
+                }
+            }
+        }
+    }
+    
     private var intentionsSelector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Select from your 'Pray On It' list:")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            HStack {
+                Text("Select from your 'Pray On It' list:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                // Show count and limit
+                if prayerLength != .extended {
+                    Text("\(selectedIntentions.count)/\(maxIntentions)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(selectedIntentions.count >= maxIntentions ? .orange : .blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            selectedIntentions.count >= maxIntentions ?
+                            Color.orange.opacity(0.2) :
+                            Color.blue.opacity(0.1)
+                        )
+                        .cornerRadius(8)
+                } else {
+                    Text("\(selectedIntentions.count) selected")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(8)
+                }
+            }
             
             if prayOnItManager.items.isEmpty {
                 // Empty state
@@ -160,11 +246,7 @@ struct AddPrayerView: View {
                             title: item.name,
                             isSelected: selectedIntentions.contains(item.id)
                         ) {
-                            if selectedIntentions.contains(item.id) {
-                                selectedIntentions.remove(item.id)
-                            } else {
-                                selectedIntentions.insert(item.id)
-                            }
+                            handleIntentionToggle(itemId: item.id)
                         }
                     }
                 }
@@ -173,6 +255,20 @@ struct AddPrayerView: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
+    }
+    
+    private func handleIntentionToggle(itemId: String) {
+        if selectedIntentions.contains(itemId) {
+            // Always allow deselection
+            selectedIntentions.remove(itemId)
+        } else {
+            // Check if we can add more
+            if selectedIntentions.count >= maxIntentions {
+                showIntentionLimitAlert = true
+            } else {
+                selectedIntentions.insert(itemId)
+            }
+        }
     }
     
     private var prayerTypePicker: some View {
@@ -184,11 +280,18 @@ struct AddPrayerView: View {
                     HStack {
                         Image(systemName: prayerType == type ? "checkmark.circle.fill" : "circle")
                             .foregroundColor(.blue)
-                        Text(type.rawValue)
-                            .foregroundColor(.primary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(type.displayName)
+                                .foregroundColor(.primary)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text(type.description)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         Spacer()
                     }
-                    .padding()
+                    .padding(12)
                     .background(
                         prayerType == type ?
                         Color.blue.opacity(0.1) :
@@ -209,11 +312,18 @@ struct AddPrayerView: View {
                     HStack {
                         Image(systemName: tone == toneOption ? "checkmark.circle.fill" : "circle")
                             .foregroundColor(.blue)
-                        Text(toneOption.rawValue)
-                            .foregroundColor(.primary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(toneOption.displayName)
+                                .foregroundColor(.primary)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text(toneOption.description)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         Spacer()
                     }
-                    .padding()
+                    .padding(12)
                     .background(
                         tone == toneOption ?
                         Color.blue.opacity(0.1) :
@@ -242,151 +352,6 @@ struct AddPrayerView: View {
                 },
                 alignment: .topLeading
             )
-    }
-    
-    // MARK: - Advanced Options Section
-    
-    private var advancedOptionsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Toggle button
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    showAdvancedOptions.toggle()
-                }
-            }) {
-                HStack {
-                    Image(systemName: "gearshape")
-                        .foregroundColor(.blue)
-                    Text("Advanced Options")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Image(systemName: showAdvancedOptions ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.gray)
-                        .font(.caption)
-                }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-            }
-            
-            // Expandable content
-            if showAdvancedOptions {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Length picker
-                    lengthPicker
-                    
-                    Divider()
-                    
-                    // Expansiveness picker
-                    expansivenessPicker
-                    
-                    // Reset button
-                    resetAdvancedButton
-                }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-    
-    private var lengthPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "clock")
-                    .foregroundColor(.blue)
-                Text("Prayer Length")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-            }
-            
-            VStack(spacing: 8) {
-                ForEach(PrayerLength.allCases, id: \.self) { length in
-                    Button(action: {
-                        prayerLength = length
-                    }) {
-                        HStack {
-                            Image(systemName: prayerLength == length ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(length.displayName)
-                                    .foregroundColor(.primary)
-                                    .font(.subheadline)
-                            }
-                            Spacer()
-                        }
-                        .padding(12)
-                        .background(
-                            prayerLength == length ?
-                            Color.blue.opacity(0.1) :
-                            Color.white
-                        )
-                        .cornerRadius(8)
-                    }
-                }
-            }
-        }
-    }
-    
-    private var expansivenessPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "text.alignleft")
-                    .foregroundColor(.blue)
-                Text("Writing Style")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-            }
-            
-            VStack(spacing: 8) {
-                ForEach(PrayerExpansiveness.allCases, id: \.self) { style in
-                    Button(action: {
-                        expansiveness = style
-                    }) {
-                        HStack {
-                            Image(systemName: expansiveness == style ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(style.displayName)
-                                    .foregroundColor(.primary)
-                                    .font(.subheadline)
-                                Text(style.description)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(12)
-                        .background(
-                            expansiveness == style ?
-                            Color.blue.opacity(0.1) :
-                            Color.white
-                        )
-                        .cornerRadius(8)
-                    }
-                }
-            }
-        }
-    }
-    
-    private var resetAdvancedButton: some View {
-        Button(action: {
-            withAnimation {
-                prayerLength = .standard
-                expansiveness = .balanced
-            }
-        }) {
-            HStack {
-                Image(systemName: "arrow.counterclockwise")
-                Text("Reset to Defaults")
-            }
-            .font(.subheadline)
-            .foregroundColor(.blue)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-        }
     }
     
     // MARK: - AI Preview Text
@@ -431,8 +396,8 @@ struct AddPrayerView: View {
         }
         
         let lengthText = prayerLength.displayName.lowercased()
-        let toneText = tone.rawValue.lowercased()
-        let typeText = prayerType.rawValue.lowercased()
+        let toneText = tone.displayName.lowercased()
+        let typeText = prayerType.displayName.lowercased()
         
         return "A \(lengthText), \(toneText) \(typeText) prayer for \(namesText)"
     }
@@ -459,14 +424,13 @@ struct AddPrayerView: View {
             .cornerRadius(12)
         }
         .disabled(!canGenerate)
-
     }
     
     private var canGenerate: Bool {
-            guard !isGenerating else { return false }
-            // Can generate if either has selected intentions OR has custom context
-            return !selectedIntentions.isEmpty || !customContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
+        guard !isGenerating else { return false }
+        // Can generate if either has selected intentions OR has custom context
+        return !selectedIntentions.isEmpty || !customContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     
     private var generatedPrayerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -539,26 +503,6 @@ struct AddPrayerView: View {
         .cornerRadius(12)
     }
     
-    // MARK: - Helper Functions
-    
-    private func estimatedReadingTime(for length: PrayerLength) -> String {
-        // Average speaking rate: ~150 words per minute at 1x speed
-        let wordsPerMinute = 150.0 
-        
-        let estimatedWords = Double(length.estimatedWordCount)
-        let minutes = estimatedWords / wordsPerMinute
-        
-        if minutes < 1.0 {
-            let seconds = Int(minutes * 60)
-            return "\(seconds) sec"
-        } else if minutes < 2.0 {
-            return "1 min"
-        } else {
-            let roundedMinutes = Int(round(minutes))
-            return "\(roundedMinutes) min"
-        }
-    }
-    
     // MARK: - Actions
     
     private func generatePrayer() {
@@ -567,7 +511,7 @@ struct AddPrayerView: View {
         // Get full Pray On It item objects
         let selectedItems = prayOnItManager.items.filter { selectedIntentions.contains($0.id) }
         
-        // Build request payload
+        // Build request payload - NOTE: expansiveness removed
         let requestPayload: [String: Any] = [
             "prayOnItItems": selectedItems.map { item in
                 [
@@ -582,7 +526,6 @@ struct AddPrayerView: View {
             "prayerType": prayerType.rawValue.lowercased(),
             "tone": tone.rawValue.lowercased(),
             "length": prayerLength.rawValue.lowercased(),
-            "expansiveness": expansiveness.rawValue.lowercased(),
             "customContext": customContext.isEmpty ? NSNull() : customContext
         ]
         
@@ -590,7 +533,6 @@ struct AddPrayerView: View {
         print("   Prayer Type: \(prayerType.rawValue)")
         print("   Tone: \(tone.rawValue)")
         print("   Length: \(prayerLength.rawValue)")
-        print("   Expansiveness: \(expansiveness.rawValue)")
         print("   Selected Items: \(selectedItems.map { $0.name }.joined(separator: ", "))")
         
         // Call PrayerManager to post prompt
@@ -633,12 +575,10 @@ struct AddPrayerView: View {
         
         // Reset to defaults
         selectedIntentions.removeAll()
+        prayerLength = .standard
         prayerType = .gratitude
         tone = .conversational
-        prayerLength = .standard
-        expansiveness = .balanced
         customContext = ""
-        showAdvancedOptions = false
         
         print("🔄 [AddPrayerView] Form reset to defaults")
     }
@@ -718,6 +658,20 @@ enum PrayerType: String, CaseIterable {
     case petition = "Petition"
     case confession = "Confession"
     case praise = "Praise"
+    
+    var displayName: String {
+        return rawValue
+    }
+    
+    var description: String {
+        switch self {
+        case .gratitude: return "Giving thanks to God"
+        case .intercession: return "Praying on behalf of others"
+        case .petition: return "Requesting God's help"
+        case .confession: return "Acknowledging sins and seeking forgiveness"
+        case .praise: return "Glorifying and worshiping God"
+        }
+    }
 }
 
 enum PrayerTone: String, CaseIterable {
@@ -725,6 +679,19 @@ enum PrayerTone: String, CaseIterable {
     case conversational = "Conversational"
     case contemplative = "Contemplative"
     case joyful = "Joyful"
+    
+    var displayName: String {
+        return rawValue
+    }
+    
+    var description: String {
+        switch self {
+        case .formal: return "Traditional and reverent language"
+        case .conversational: return "Natural, everyday language"
+        case .contemplative: return "Reflective and meditative"
+        case .joyful: return "Celebratory and uplifting"
+        }
+    }
 }
 
 enum PrayerLength: String, CaseIterable {
@@ -740,33 +707,19 @@ enum PrayerLength: String, CaseIterable {
         }
     }
     
+    var description: String {
+        switch self {
+        case .brief: return "Up to 3 pray-on-its"
+        case .standard: return "Up to 5 pray-on-its"
+        case .extended: return "Unlimited pray-on-its"
+        }
+    }
+    
     var estimatedWordCount: Int {
         switch self {
         case .brief: return 125        // ~125 words ≈ 1 min at normal speed
         case .standard: return 250     // ~250 words ≈ 2 min at normal speed
         case .extended: return 450     // ~450 words ≈ 3 min at normal speed
-        }
-    }
-}
-
-enum PrayerExpansiveness: String, CaseIterable {
-    case concise = "concise"
-    case balanced = "balanced"
-    case expansive = "expansive"
-    
-    var displayName: String {
-        switch self {
-        case .concise: return "Concise & Direct"
-        case .balanced: return "Balanced"
-        case .expansive: return "Expansive & Reflective"
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .concise: return "Short, focused sentences"
-        case .balanced: return "Mix of detail and brevity"
-        case .expansive: return "Poetic and reflective"
         }
     }
 }
