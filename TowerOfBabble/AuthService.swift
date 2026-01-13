@@ -221,7 +221,150 @@ class AuthService {
         }.resume()
     }
     
+
+    // MARK: - Password Reset
+
+    func requestPasswordReset(email: String, completion: @escaping (Result<String, AuthError>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/request-password-reset") else {
+            completion(.failure(.networkError("Invalid URL")))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "email": email
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.unknown))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(.networkError("No data received")))
+                return
+            }
+            
+            // Handle different status codes
+            switch httpResponse.statusCode {
+            case 200:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.success(message))
+                } else {
+                    completion(.success("Password reset email sent!"))
+                }
+                
+            case 429:
+                // Too many requests
+                completion(.failure(.serverError("Please wait before requesting another password reset")))
+                
+            case 400:
+                // Validation error
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["error"] as? String {
+                    completion(.failure(.serverError(message)))
+                } else {
+                    completion(.failure(.serverError("Invalid request")))
+                }
+                
+            default:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["error"] as? String {
+                    completion(.failure(.serverError(message)))
+                } else {
+                    completion(.failure(.serverError("Server error: \(httpResponse.statusCode)")))
+                }
+            }
+        }.resume()
+    }
+
+    func resetPassword(token: String, newPassword: String, completion: @escaping (Result<String, AuthError>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/reset-password") else {
+            completion(.failure(.networkError("Invalid URL")))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "token": token,
+            "newPassword": newPassword
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                completion(.failure(.unknown))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(.networkError("No data received")))
+                return
+            }
+            
+            // Handle different status codes
+            switch httpResponse.statusCode {
+            case 200:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.success(message))
+                } else {
+                    completion(.success("Password reset successfully!"))
+                }
+                
+            case 400:
+                // Validation error or invalid token
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["error"] as? String {
+                    completion(.failure(.serverError(message)))
+                } else {
+                    completion(.failure(.serverError("Invalid or expired reset token")))
+                }
+                
+            default:
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["error"] as? String {
+                    completion(.failure(.serverError(message)))
+                } else {
+                    completion(.failure(.serverError("Server error: \(httpResponse.statusCode)")))
+                }
+            }
+        }.resume()
+    }
+    
     // MARK: - Helper Methods
+    
     
     func isLoggedIn() -> Bool {
         return UserDefaults.standard.string(forKey: "authToken") != nil

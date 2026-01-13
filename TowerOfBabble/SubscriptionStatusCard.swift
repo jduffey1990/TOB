@@ -145,7 +145,7 @@ struct SubscriptionStatusCard: View {
 
             
             // Upgrade CTA (only for free tier)
-            if shouldShowUpgrade {
+            if shouldShowUpgrade && !upgradeMessage.isEmpty{
                 Button(action: onUpgradeTapped) {
                     HStack {
                         Text(upgradeMessage)
@@ -201,11 +201,11 @@ struct SubscriptionStatusCard: View {
     
     private var upgradeMessage: String {
         if progress >= 1.0 {
-            return "Prayer limit reached • Upgrade to Pro for 50 prayers"
+            return "Prayer limit reached • Upgrade to Pro for 20 prayers"
         } else if progress >= 0.8 {
             return "Running low on prayer slots • Upgrade to Pro"
         } else {
-            return "Upgrade to Pro for 50 prayers"
+            return "Upgrade to Pro for 20 prayers"
         }
     }
     

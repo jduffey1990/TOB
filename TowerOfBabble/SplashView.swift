@@ -29,7 +29,7 @@ struct SplashView: View {
                 
                 // Tagline
                 if showTagline {
-                    Text("The closest we can get to God is through prayer")
+                    Text("Build your spiritual foundation, prayer by prayer.")
                         .font(.system(size: 18, weight: .light, design: .serif))
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)

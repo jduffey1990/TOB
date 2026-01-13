@@ -84,8 +84,16 @@ struct SettingsView: View {
                             Image(systemName: "sparkles")
                             Text("AI Generations")
                             Spacer()
-                            Text("Coming Soon")
-                                .foregroundColor(.secondary)
+                            Text(prayerManager.aiCreditsText)
+                                .foregroundColor(
+                                    prayerManager.hasAICredits ? .secondary : .red
+                                )
+                            Spacer()
+                            if prayerManager.isWaitingForDailyRollover {
+                                Text("Resets tomorrow")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                         
                         HStack {

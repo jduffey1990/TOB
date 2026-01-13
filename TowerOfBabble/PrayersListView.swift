@@ -76,7 +76,7 @@ struct PrayersListView: View {
                         stats: prayerManager.prayerStats,
                         onUpgradeTapped: {
                             upgradeReason = .prayerLimitReached
-                            showingUpgradeSheet = true
+                            showingUpgradeSheet = !prayerManager.canCreateMorePrayers
                         }
                     )
                     .listRowInsets(EdgeInsets())
@@ -311,10 +311,11 @@ struct UpgradePlaceholderView: View {
                     .padding(.horizontal, 40)
                 
                 VStack(alignment: .leading, spacing: 16) {
-                    FeatureRow(icon: "checkmark.circle.fill", text: "50 saved prayers")
-                    FeatureRow(icon: "checkmark.circle.fill", text: "Cloud sync across devices")
+                    FeatureRow(icon: "checkmark.circle.fill", text: "20 AI prayer builds/month")
+                    FeatureRow(icon: "checkmark.circle.fill", text: "20 saved prayers")
+                    FeatureRow(icon: "checkmark.circle.fill", text: "10 pray on it features")
                     FeatureRow(icon: "checkmark.circle.fill", text: "Premium voice options")
-                    FeatureRow(icon: "checkmark.circle.fill", text: "AI prayer suggestions")
+                    
                 }
                 .padding(.horizontal, 40)
                 .padding(.top, 20)
@@ -394,11 +395,11 @@ struct UpgradePlaceholderView: View {
     private var messageForReason: String {
         switch reason {
         case .prayerLimitReached:
-            return "You've reached your limit of 5 prayers. Upgrade to Pro for 50 prayer slots!"
+            return "You've reached your limit of 5 prayers. Upgrade to Pro for 20 prayer slots!"
         case .aiCreditsExhausted:
-            return "You've used all your AI generations. Upgrade for unlimited AI-powered prayers!"
+            return "You've used all your AI generations. Upgrade for more AI-powered prayers!"
         case .premiumFeature:
-            return "Get 50 prayer slots, cloud sync, and premium features"
+            return "Get 20 prayer slots and premium voices"
         }
     }
 }

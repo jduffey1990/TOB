@@ -260,17 +260,15 @@ struct PrayOnItUpgradeView: View {
                 Text("Pray On It Limit Reached")
                     .font(.system(size: 32, weight: .bold))
                 
-                Text("You've reached your limit. Upgrade to Pro for 50 intention slots or Prayer Warrior for unlimited!")
+                Text("You've reached your limit. Upgrade to Pro for 10 intention slots or Prayer Warrior for 25!")
                     .font(.body)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
                 
                 VStack(alignment: .leading, spacing: 16) {
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "50 saved prayers")
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "50 Pray On It items (Pro)")
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Unlimited items (Warrior)")
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Cloud sync across devices")
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "20 saved prayers")
+                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "10 Pray On It items")
                     FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Premium voice options")
                 }
                 .padding(.horizontal, 40)
