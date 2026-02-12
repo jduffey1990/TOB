@@ -12,12 +12,14 @@ struct SignupView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var name = ""
-    @State private var selectedDenomination = "Christian"
+    @State private var selectedDenomination = ""
     @State private var denominations: [String] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @State private var showAlert = false
+    @State private var showingCustomInput = false
+    @State private var customDenomination = ""
     
     var onNavigateToLogin: () -> Void
     
@@ -133,8 +135,8 @@ struct SignupView: View {
                                     selectedDenomination: $selectedDenomination
                                 )) {
                                     HStack {
-                                        Text(selectedDenomination)
-                                            .foregroundColor(.primary)
+                                        Text(selectedDenomination.isEmpty ? "Select denomination" : selectedDenomination)
+                                            .foregroundColor(selectedDenomination.isEmpty ? .gray : .primary)
                                         Spacer()
                                         Image(systemName: "chevron.right")
                                             .foregroundColor(.secondary)
@@ -154,41 +156,23 @@ struct SignupView: View {
                         
                         // Terms & Privacy Agreement
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 4) {
-                                Text("By creating an account, you agree to our")
-                                    .font(.footnote)
-                                    .foregroundColor(.gray)
-                                
-                                Button(action: {
-                                    if let url = URL(string: "https://tobprayer.app/terms") {
-                                        UIApplication.shared.open(url)
-                                    }
-                                }) {
-                                    Text("Terms of Service")
-                                        .font(.footnote)
-                                        .foregroundColor(.blue)
-                                        .underline()
-                                }
-                            }
                             
-                            HStack(spacing: 4) {
-                                Text("and")
-                                    .font(.footnote)
-                                    .foregroundColor(.gray)
-                                
-                                Button(action: {
-                                    if let url = URL(string: "https://tobprayer.app/privacy") {
-                                        UIApplication.shared.open(url)
-                                    }
-                                }) {
-                                    Text("Privacy Policy")
-                                        .font(.footnote)
-                                        .foregroundColor(.blue)
-                                        .underline()
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 30)
+                            Text(
+                                try! AttributedString(
+                                    markdown: "By creating an account, you agree to our [Terms of Service](https://tobprayer.app/terms)"
+                                )
+                            )
+                            .font(.footnote)
+                            .foregroundColor(.gray)
+                            
+                            Text(
+                                try! AttributedString(
+                                    markdown: "and [Privacy Policy](https://tobprayer.app/privacy)"
+                                )
+                            )
+                            .font(.footnote)
+                            .foregroundColor(.gray)
+                        }                        .padding(.horizontal, 30)
                         .padding(.top, 10)
                         
                         // Status messages
@@ -255,6 +239,21 @@ struct SignupView: View {
             } message: {
                 Text(successMessage ?? errorMessage ?? "An error occurred")
             }
+            .alert("Enter Your Denomination", isPresented: $showingCustomInput) {
+                TextField("e.g., Protestant, Catholic, etc.", text: $customDenomination)
+                    .autocapitalization(.words)
+                Button("Cancel", role: .cancel) {
+                    customDenomination = ""
+                }
+                Button("OK") {
+                    if !customDenomination.trimmingCharacters(in: .whitespaces).isEmpty {
+                        selectedDenomination = customDenomination.trimmingCharacters(in: .whitespaces)
+                    }
+                    customDenomination = ""
+                }
+            } message: {
+                Text("We couldn't load denominations from the server. Please enter your religious denomination or spiritual tradition.")
+            }
             .onAppear {
                 fetchDenominations()
             }
@@ -277,53 +276,21 @@ struct SignupView: View {
     // MARK: - Actions
     
     private func fetchDenominations() {
-        AuthService.shared.fetchDenominations { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let fetchedDenominations):
-                    self.denominations = fetchedDenominations
-                    print("✅ Loaded \(fetchedDenominations.count) denominations")
-                    
-                case .failure(let error):
-                    print("❌ Failed to load denominations: \(error)")
-                    // Fallback denominations list
-                    self.denominations = [
-                        "Christian",
-                        "Roman Catholic",
-                        "Eastern Orthodox",
-                        "Protestant - Anglican/Episcopal",
-                        "Protestant - Baptist",
-                        "Protestant - Lutheran",
-                        "Protestant - Methodist",
-                        "Protestant - Presbyterian",
-                        "Protestant - Pentecostal",
-                        "Protestant - Non-denominational",
-                        "Latter-day Saints (Mormon)",
-                        "Seventh-day Adventist",
-                        "Orthodox Judaism",
-                        "Conservative Judaism",
-                        "Reform Judaism",
-                        "Reconstructionist Judaism",
-                        "Sunni Islam",
-                        "Shia Islam",
-                        "Sufi Islam",
-                        "Buddhism - Theravada",
-                        "Buddhism - Mahayana",
-                        "Buddhism - Vajrayana",
-                        "Hinduism",
-                        "Sikhism",
-                        "Taoism",
-                        "Bahá'í Faith",
-                        "Unitarian Universalist",
-                        "Spiritual but not religious",
-                        "Atheist",
-                        "None",
-                        "Other"
-                    ]
+            AuthService.shared.fetchDenominations { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let fetchedDenominations):
+                        self.denominations = fetchedDenominations
+                        print("✅ Loaded \(fetchedDenominations.count) denominations")
+                        
+                    case .failure(let error):
+                        print("❌ Failed to load denominations: \(error)")
+                        // NEW: Instead of hardcoded fallback, show custom input dialog
+                        self.showingCustomInput = true
+                    }
                 }
             }
         }
-    }
     
     private func handleSignup() {
         guard isFormValid else { return }
@@ -331,6 +298,8 @@ struct SignupView: View {
         isLoading = true
         errorMessage = nil
         successMessage = nil
+        
+        print("selectedDenomination: \(selectedDenomination)")
         
         AuthService.shared.createUser(
             email: email.lowercased(),
@@ -423,7 +392,7 @@ struct DenominationSelectionView: View {
         .navigationTitle("Select Denomination")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Enter Your Denomination", isPresented: $showingCustomInput) {
-            TextField("e.g., Community Church", text: $customDenomination)
+            TextField("e.g. Protestant, Catholic, etc.", text: $customDenomination)
                 .autocapitalization(.words)
             Button("Cancel", role: .cancel) {
                 customDenomination = ""

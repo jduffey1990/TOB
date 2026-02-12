@@ -2,8 +2,6 @@
 //  PrayerEditorView.swift
 //  TowerOfBabble
 //
-//  Updated with better error handling and API integration
-//
 
 import SwiftUI
 
@@ -29,12 +27,12 @@ struct PrayerEditorView: View {
     private var isImmutable: Bool {
         prayer != nil
     }
-
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                // Title field
+                
+                // MARK: - Title
                 TextField("Prayer Title", text: $title)
                     .font(.headline)
                     .padding()
@@ -42,20 +40,18 @@ struct PrayerEditorView: View {
                     .cornerRadius(10)
                     .disabled(isSaving)
                 
-                // Text editor
-                TextEditor(text: $text)
-                    .frame(minHeight: 200)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(10)
-                    .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(isImmutable ? Color.gray : Color.blue, lineWidth: 1)
-                        )
-                    .disabled(isSaving || isImmutable)
+                // MARK: - Prayer Text
+                ScrollView {
+                    TextEditor(text: $text)
+                        .frame(minHeight: 300)
+                        .padding(8)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(10)
+                        .disabled(isSaving || isImmutable)
+                }
                 
-                // Buttons
-                HStack(spacing: 15) {
+                // MARK: - Bottom Buttons (ONLY when creating new)
+                if prayer == nil {
                     Button(action: savePrayer) {
                         if isSaving {
                             ProgressView()
@@ -74,7 +70,10 @@ struct PrayerEditorView: View {
                         }
                     }
                     .disabled(isSaving || title.isEmpty || text.isEmpty)
-                    
+                }
+                
+                // MARK: - Audio Button (ONLY when editing)
+                if prayer != nil {
                     Button(action: handleActionButton) {
                         actionButtonLabel
                             .frame(maxWidth: .infinity)
@@ -84,17 +83,19 @@ struct PrayerEditorView: View {
                             .cornerRadius(10)
                     }
                     .disabled(isActionButtonDisabled)
-
                 }
-                .padding(.horizontal)
                 
                 Spacer()
             }
             .padding()
             .navigationTitle(prayer == nil ? "New Prayer" : "Prayer")
             .navigationBarTitleDisplayMode(.inline)
+            
+            // MARK: - Toolbar
             .toolbar {
-                if prayer == nil {  // Only show Cancel when creating new
+                
+                // Cancel only for new
+                if prayer == nil {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button("Cancel") {
                             dismiss()
@@ -102,21 +103,34 @@ struct PrayerEditorView: View {
                         .disabled(isSaving)
                     }
                 }
+                
+                // Save in NavBar only when editing
+                if prayer != nil {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Save") {
+                            savePrayer()
+                        }
+                        .disabled(isSaving || title.isEmpty)
+                    }
+                }
             }
+            
+            .task(id: prayer?.id) {
+                fetchAudioState()
+            }
+            
             .onAppear {
                 if let prayer = prayer {
                     title = prayer.title
                     text = prayer.text
-
-                    // ✅ Reset audio state before fetching
-                    audioPlayer.audioState = .missing
-
                     fetchAudioState()
                 }
             }
+            
             .onDisappear {
                 audioPlayer.stopSpeaking()
             }
+            
             .alert("Error", isPresented: $showingError) {
                 Button("OK") {
                     showingError = false
@@ -126,14 +140,17 @@ struct PrayerEditorView: View {
             }
         }
     }
-        
+}
+
+// MARK: - Audio Button UI
+
+extension PrayerEditorView {
+    
     private var actionButtonLabel: some View {
-        // For Apple TTS, check isSpeaking state
         let voice = VoiceService.shared.getCurrentVoice()
         let isAppleTTS = voice?.provider == "apple"
         
         if isAppleTTS {
-            // Apple TTS: Show Play/Stop based on speaking state
             return AnyView(
                 Label(
                     audioPlayer.isSpeaking ? "Stop" : "Play",
@@ -141,12 +158,13 @@ struct PrayerEditorView: View {
                 )
             )
         } else {
-            // Backend TTS: Show state-based labels
             switch audioPlayer.audioState {
             case .missing:
                 return AnyView(Label("Generate Audio", systemImage: "waveform"))
+                
             case .building:
                 return AnyView(Label("Building Audio…", systemImage: "hourglass"))
+                
             case .ready:
                 return AnyView(
                     Label(
@@ -157,11 +175,12 @@ struct PrayerEditorView: View {
             }
         }
     }
+    
     private var isActionButtonDisabled: Bool {
         if case .building = audioPlayer.audioState { return true }
         return isSaving
     }
-
+    
     private var actionButtonColor: Color {
         let voice = VoiceService.shared.getCurrentVoice()
         let isAppleTTS = voice?.provider == "apple"
@@ -176,19 +195,20 @@ struct PrayerEditorView: View {
             }
         }
     }
+}
 
+// MARK: - Actions
 
+extension PrayerEditorView {
     
     private func savePrayer() {
-        guard !title.isEmpty, !text.isEmpty else { return }
+        guard !title.isEmpty else { return }
         
         isSaving = true
         
         if let existingPrayer = prayer {
-            // Update existing - modify the copy
             var updatedPrayer = existingPrayer
             updatedPrayer.title = title
-            updatedPrayer.text = text
             
             prayerManager.updatePrayer(updatedPrayer) { result in
                 DispatchQueue.main.async {
@@ -205,7 +225,6 @@ struct PrayerEditorView: View {
                 }
             }
         } else {
-            // Create new - use title and text only
             prayerManager.addPrayer(title: title, text: text) { result in
                 DispatchQueue.main.async {
                     isSaving = false
@@ -222,32 +241,17 @@ struct PrayerEditorView: View {
             }
         }
     }
-    private func playPrayer() {
-        guard let prayer = prayer else { return }
-        guard let voice = VoiceService.shared.getCurrentVoice() else {
-            errorMessage = "No voice selected"
-            showingError = true
-            return
-        }
-        
-        audioPlayer.playPrayer(prayer, voice: voice)  // ✅ Use audioPlayer
-    }
-        
+    
     private func fetchAudioState() {
         guard let prayer = prayer else { return }
         guard let voice = VoiceService.shared.getCurrentVoice() else { return }
         
-        // This will update audioPlayer.audioState
-        audioPlayer.checkAudioState(prayerId: prayer.id, voiceId: voice.id) { state in
-            // The state is already published by audioPlayer
-            // No need to set local state
-        }
+        audioPlayer.checkAudioState(prayerId: prayer.id, voiceId: voice.id) { _ in }
     }
     
     private func handleActionButton() {
         guard let prayer = prayer else { return }
         
-        // If speaking, stop (works for both Apple and backend TTS)
         if audioPlayer.isSpeaking {
             audioPlayer.stopSpeaking()
             return
@@ -255,18 +259,12 @@ struct PrayerEditorView: View {
         
         guard let voice = VoiceService.shared.getCurrentVoice() else { return }
         
-        // Play based on current state
         switch audioPlayer.audioState {
         case .missing, .building:
-            // Play will handle generation if needed
             audioPlayer.playPrayer(prayer, voice: voice)
             
         case .ready(let url):
-            // Audio is ready, just play it
             audioPlayer.playRemoteAudio(url)
         }
     }
-
-
-
 }

@@ -485,7 +485,7 @@ class AuthService {
        // Optional fields with defaults
        let status = UserDefaults.standard.string(forKey: "userStatus") ?? "active"
        let tier = UserDefaults.standard.string(forKey: "userTier") ?? "free"
-       let denomination = UserDefaults.standard.string(forKey: "userDenomination") ?? "Christian"  // FIXED: Load denomination
+       let denomination = UserDefaults.standard.string(forKey: "userDenomination") ?? ""  // FIXED: Load denomination
        
        // Load settings from UserSettings singleton
        let settings = UserSettings.shared.settings

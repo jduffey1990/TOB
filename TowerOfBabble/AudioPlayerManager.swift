@@ -171,59 +171,63 @@ class AudioPlayerManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegat
     // MARK: - Audio State Checking
     
     /// Check current audio state for a prayer+voice combination
-    func checkAudioState(prayerId: String, voiceId: String, completion: @escaping (AudioState) -> Void) {
+    func checkAudioState(prayerId: String, voiceId: String, completion: ((AudioState) -> Void)? = nil) {
         let voiceIndex = UserSettings.shared.currentVoiceIndex
-        
+
         if let voice = VoiceService.shared.getVoiceByIndex(voiceIndex),
-               voice.provider == "apple" {
-                completion(.missing)
-                return
+           voice.provider == "apple" {
+            DispatchQueue.main.async {
+                self.audioState = .missing
+                completion?(.missing)
             }
-        
-        guard let url = URL(string: "\(Config.baseURL)/prayers/\(prayerId)/audio-state?voiceId=\(voiceId)") else {
-            completion(.missing)
             return
         }
-        
-        guard let request = APIClient.shared.createAuthorizedRequest(url: url, method: "GET") else {
-            completion(.missing)
+
+        guard let url = URL(string: "\(Config.baseURL)/prayers/\(prayerId)/audio-state?voiceId=\(voiceId)"),
+              let request = APIClient.shared.createAuthorizedRequest(url: url, method: "GET")
+        else {
+            DispatchQueue.main.async {
+                self.audioState = .missing
+                completion?(.missing)
+            }
             return
         }
-        
+
         URLSession.shared.dataTask(with: request) { data, response, error in
-            guard error == nil,
-                  let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let data = data else {
-                completion(.missing)
-                return
-            }
-            
-            do {
-                let stateResponse = try JSONDecoder().decode(AudioStateResponse.self, from: data)
-                print("📊 Audio state: \(stateResponse.state)")
-                
-                switch stateResponse.state {
+            let newState: AudioState
+
+            if let data = data,
+               let httpResponse = response as? HTTPURLResponse,
+               httpResponse.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(AudioStateResponse.self, from: data) {
+
+                switch decoded.state {
                 case "READY":
-                    if let urlString = stateResponse.audioUrl,
+                    if let urlString = decoded.audioUrl,
                        let audioUrl = URL(string: urlString) {
-                        completion(.ready(url: audioUrl))
+                        newState = .ready(url: audioUrl)
                     } else {
-                        completion(.missing)
+                        newState = .missing
                     }
-                    
+
                 case "BUILDING":
-                    completion(.building)
-                    
-                default: // MISSING
-                    completion(.missing)
+                    newState = .building
+
+                default:
+                    newState = .missing
                 }
-            } catch {
-                print("❌ Failed to decode state: \(error)")
-                completion(.missing)
+
+            } else {
+                newState = .missing
+            }
+
+            DispatchQueue.main.async {
+                self.audioState = newState
+                completion?(newState)
             }
         }.resume()
     }
+
     
     /// Generate audio (starts async generation on backend)
     private func generateAudio(prayerId: String, voiceId: String, prayer: Prayer) {

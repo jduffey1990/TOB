@@ -51,7 +51,7 @@ class AuthManager: ObservableObject {
         let status = UserDefaults.standard.string(forKey: userStatusKey) ?? "active"
         let tier = UserDefaults.standard.string(forKey: userTierKey) ?? "free"
         let subscriptionExpiresAt = UserDefaults.standard.string(forKey: userSubscriptionExpiresAtKey)
-        let denomination = UserDefaults.standard.string(forKey: userDenominationKey) ?? "Christian"
+        let denomination = UserDefaults.standard.string(forKey: userDenominationKey) ?? ""
         
         // ✅ CHANGED: UserSettings loads itself on init, no need to manually load here
         let loadedSettings = UserSettings.shared.settings

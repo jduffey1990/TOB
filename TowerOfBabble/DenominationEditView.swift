@@ -3,6 +3,8 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 2/11/26.
+
+
 //  View for editing user's religious denomination from settings
 //  Fetches denominations list and updates via backend API
 //
@@ -23,7 +25,7 @@ struct DenominationEditView: View {
     
     init() {
         // Initialize with current user's denomination
-        _selectedDenomination = State(initialValue: AuthService.shared.getCurrentUser()?.denomination ?? "Christian")
+        _selectedDenomination = State(initialValue: AuthService.shared.getCurrentUser()?.denomination ?? "")
     }
     
     var filteredDenominations: [String] {
@@ -125,28 +127,8 @@ struct DenominationEditView: View {
                     
                 case .failure(let error):
                     print("❌ Failed to load denominations: \(error)")
-                    // Use default list if fetch fails
-                    self.denominations = [
-                        "Christian",
-                        "Roman Catholic",
-                        "Eastern Orthodox",
-                        "Protestant - Baptist",
-                        "Protestant - Methodist",
-                        "Protestant - Lutheran",
-                        "Protestant - Presbyterian",
-                        "Orthodox Judaism",
-                        "Reform Judaism",
-                        "Sunni Islam",
-                        "Shia Islam",
-                        "Buddhism - Theravada",
-                        "Buddhism - Mahayana",
-                        "Hinduism",
-                        "Sikhism",
-                        "Spiritual but not religious",
-                        "Atheist",
-                        "None",
-                        "Other"
-                    ]
+                    // NEW: Instead of hardcoded fallback, show custom input dialog
+                    self.showingCustomInput = true
                 }
             }
         }
