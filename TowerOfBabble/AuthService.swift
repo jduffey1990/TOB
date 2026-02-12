@@ -14,15 +14,29 @@ struct User: Codable {
     let status: String
     let subscriptionTier: String
     let subscriptionExpiresAt: String?
-    let settings: UserSettingsModel  // ✅ FIXED: Properly typed
+    let settings: UserSettingsModel
+    let denomination: String  // NEW: User's religious denomination
     let createdAt: String
     let updatedAt: String
     
     enum CodingKeys: String, CodingKey {
-        case id, email, name, status, settings, createdAt, updatedAt
-        case subscriptionTier = "subscriptionTier"
-        case subscriptionExpiresAt = "subscriptionExpiresAt"
+        case id
+        case email
+        case name
+        case status
+        case subscriptionTier
+        case subscriptionExpiresAt
+        case settings
+        case denomination
+        case createdAt
+        case updatedAt
     }
+}
+
+// NEW: Response model for GET /denominations
+struct DenominationsResponse: Codable {
+    let denominations: [String]
+    let count: Int
 }
 
 enum AuthError: Error {
@@ -32,6 +46,7 @@ enum AuthError: Error {
     case serverError(String)
     case decodingError
     case unknown
+    case unauthorized
 }
 
 // MARK: - Auth Service
@@ -47,16 +62,12 @@ class AuthService {
     // MARK: - Login
     
     func login(email: String, password: String, completion: @escaping (Result<LoginResponse, AuthError>) -> Void) {
-        print("🔵 Starting login...")
-        print("🔵 Base URL: \(baseURL)")
-        print("🔵 Email: \(email)")
+
         guard let url = URL(string: "\(baseURL)/login") else {
             print("❌ Invalid URL: \(baseURL)/login")
             completion(.failure(.networkError("Invalid URL")))
             return
         }
-        
-        print("🔵 URL is valid: \(url)")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -69,16 +80,13 @@ class AuthService {
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            print("🔵 Request body created")
         } catch {
             print("❌ Failed to encode request: \(error)")
             completion(.failure(.networkError("Failed to encode request")))
             return
         }
         
-        print("🔵 Starting URLSession task...")
         URLSession.shared.dataTask(with: request) { data, response, error in
-            print("🔵 URLSession completed")
 
             if let error = error {
                 print("❌ Network error: \(error.localizedDescription)")
@@ -86,7 +94,6 @@ class AuthService {
                 return
             }
             
-            print("🔵 Got response")
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("❌ Not an HTTP response")
@@ -94,15 +101,13 @@ class AuthService {
                 return
             }
             
-            print("🔵 Status code: \(httpResponse.statusCode)")
-            
             guard let data = data else {
                 print("❌ No data received")
                 completion(.failure(.networkError("No data received")))
                 return
             }
             
-            print("🔵 Data received: \(data.count) bytes")
+            
             if let jsonString = String(data: data, encoding: .utf8) {
                 print("🔵 Response body: \(jsonString)")
             }
@@ -143,7 +148,13 @@ class AuthService {
     
     // MARK: - Create User
     
-    func createUser(email: String, password: String, name: String, completion: @escaping (Result<User, AuthError>) -> Void) {
+    func createUser(
+        email: String,
+        password: String,
+        name: String,
+        denomination: String,  // NEW: Required denomination parameter
+        completion: @escaping (Result<User, AuthError>) -> Void)
+    {
         guard let url = URL(string: "\(baseURL)/create-user") else {
             completion(.failure(.networkError("Invalid URL")))
             return
@@ -156,8 +167,8 @@ class AuthService {
         let body: [String: Any] = [
             "email": email,
             "password": password,
-            "name": name
-            // captchaToken is optional - not implementing for now
+            "name": name,
+            "denomination": denomination  // NEW: Include denomination
         ]
         
         do {
@@ -221,6 +232,100 @@ class AuthService {
         }.resume()
     }
     
+    // MARK: - Fetch Denominations
+        
+    // NEW: Fetch denominations list from backend
+    func fetchDenominations(completion: @escaping (Result<[String], AuthError>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/denominations") else {
+            completion(.failure(.networkError("Invalid URL")))
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  let data = data else {
+                completion(.failure(.networkError("Invalid response")))
+                return
+            }
+            
+            if httpResponse.statusCode == 200 {
+                do {
+                    let denominationsResponse = try JSONDecoder().decode(DenominationsResponse.self, from: data)
+                    completion(.success(denominationsResponse.denominations))
+                } catch {
+                    print("❌ Decoding error: \(error)")
+                    completion(.failure(.decodingError))
+                }
+            } else {
+                completion(.failure(.serverError("Server error: \(httpResponse.statusCode)")))
+            }
+        }.resume()
+    }
+    
+    // MARK: - Update User Denomination
+        
+        
+    func updateDenomination(
+        denomination: String,
+        completion: @escaping (Result<User, AuthError>) -> Void
+    ) {
+        guard let url = URL(string: "\(baseURL)/edit-user") else{
+            completion(.failure(.networkError("Invalid URL or no auth token")))
+            return
+        }
+        
+        guard var request = APIClient.shared.createAuthorizedRequest(url: url, method: "PATCH") else {
+            completion(.failure(.unauthorized))
+            return
+        }
+        
+        
+        let body: [String: Any] = ["denomination": denomination]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(.networkError("Failed to encode request")))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(.networkError(error.localizedDescription)))
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  let data = data else {
+                completion(.failure(.networkError("Invalid response")))
+                return
+            }
+            
+            if httpResponse.statusCode == 200 {
+                do {
+                    let user = try JSONDecoder().decode(User.self, from: data)
+                    completion(.success(user))
+                } catch {
+                    completion(.failure(.decodingError))
+                }
+            } else {
+                if let errorData = try? JSONDecoder().decode([String: String].self, from: data),
+                   let errorMessage = errorData["error"] {
+                    completion(.failure(.serverError(errorMessage)))
+                } else {
+                    completion(.failure(.serverError("Server error: \(httpResponse.statusCode)")))
+                }
+            }
+        }.resume()
+    }
 
     // MARK: - Password Reset
 
@@ -371,31 +476,33 @@ class AuthService {
     }
     
     func getCurrentUser() -> User? {
-        guard let id = UserDefaults.standard.string(forKey: "userId"),
-              let email = UserDefaults.standard.string(forKey: "userEmail"),
-              let name = UserDefaults.standard.string(forKey: "userName") else {
-            return nil
-        }
-        
-        // Optional fields with defaults (outside the guard)
-        let status = UserDefaults.standard.string(forKey: "userStatus") ?? "active" // ✅ Works here
-        let tier = UserDefaults.standard.string(forKey: "userTier") ?? "free"
-
-        // Load settings from PrayerManager singleton
-        let settings = UserSettings.shared.settings
-        
-        return User(
-            id: id,
-            email: email,
-            name: name,
-            status: status,
-            subscriptionTier: tier,
-            subscriptionExpiresAt: UserDefaults.standard.string(forKey: "userSubscriptionExpiresAt"),
-            settings: settings,
-            createdAt: UserDefaults.standard.string(forKey: "userCreatedAt") ?? "",
-            updatedAt: UserDefaults.standard.string(forKey: "userUpdatedAt") ?? ""
-        )
-    }
+       guard let id = UserDefaults.standard.string(forKey: "userId"),
+             let email = UserDefaults.standard.string(forKey: "userEmail"),
+             let name = UserDefaults.standard.string(forKey: "userName") else {
+           return nil
+       }
+       
+       // Optional fields with defaults
+       let status = UserDefaults.standard.string(forKey: "userStatus") ?? "active"
+       let tier = UserDefaults.standard.string(forKey: "userTier") ?? "free"
+       let denomination = UserDefaults.standard.string(forKey: "userDenomination") ?? "Christian"  // FIXED: Load denomination
+       
+       // Load settings from UserSettings singleton
+       let settings = UserSettings.shared.settings
+       
+       return User(
+           id: id,
+           email: email,
+           name: name,
+           status: status,
+           subscriptionTier: tier,
+           subscriptionExpiresAt: UserDefaults.standard.string(forKey: "userSubscriptionExpiresAt"),
+           settings: settings,
+           denomination: denomination,  // FIXED: Include denomination
+           createdAt: UserDefaults.standard.string(forKey: "userCreatedAt") ?? "",
+           updatedAt: UserDefaults.standard.string(forKey: "userUpdatedAt") ?? ""
+       )
+   }
     
     func logout() {
         // Clear all user data
@@ -406,6 +513,7 @@ class AuthService {
         UserDefaults.standard.removeObject(forKey: "userStatus")
         UserDefaults.standard.removeObject(forKey: "userTier")
         UserDefaults.standard.removeObject(forKey: "userSubscriptionExpiresAt")
+        UserDefaults.standard.removeObject(forKey: "userDenomination")
         UserDefaults.standard.removeObject(forKey: "userCreatedAt")
         UserDefaults.standard.removeObject(forKey: "userUpdatedAt")
         

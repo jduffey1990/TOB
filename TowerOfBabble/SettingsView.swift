@@ -117,6 +117,23 @@ struct SettingsView: View {
                     }
                 }
                 
+                // NEW: Preferences Section with Denomination
+                Section(header: Text("Preferences")) {
+                    // Denomination Edit
+                    NavigationLink(destination: DenominationEditView()) {
+                        HStack {
+                            Image(systemName: "book.closed")
+                            Text("Religious Denomination")
+                            Spacer()
+                            if let user = AuthService.shared.getCurrentUser() {
+                                Text(user.denomination)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                
                 // Playback Settings - NOW FUNCTIONAL!
                 Section(header: Text("Playback")) {
                     // Voice Selection
@@ -132,32 +149,36 @@ struct SettingsView: View {
                     
                 }
                 
-                // App Info
-                Section(header: Text("About")) {
-                    HStack {
-                        Image(systemName: "info.circle")
-                        Text("Version")
-                        Spacer()
-                        Text("1.0.0 (MVP)")
-                            .foregroundColor(.secondary)
+                Section(header: Text("Legal")) {
+                    Button(action: {
+                        if let url = URL(string: "https://tobprayer.app/terms") {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack {
+                            Text("Terms of Service")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.gray)
+                        }
                     }
                     
-                    HStack {
-                        Image(systemName: "doc.text")
-                        Text("Privacy Policy")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.gray)
-                    }
-                    
-                    HStack {
-                        Image(systemName: "doc.text")
-                        Text("Terms of Service")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.gray)
+                    Button(action: {
+                        if let url = URL(string: "https://tobprayer.app/privacy") {
+                            UIApplication.shared.open(url)
+                        }
+                    }) {
+                        HStack {
+                            Text("Privacy Policy")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.gray)
+                        }
                     }
                 }
+
                 
                 // Actions
                 Section {

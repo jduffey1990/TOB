@@ -28,7 +28,7 @@ class AuthManager: ObservableObject {
     private let userStatusKey = "userStatus"
     private let userTierKey = "userTier"
     private let userSubscriptionExpiresAtKey = "userSubscriptionExpiresAt"
-
+    private let userDenominationKey = "userDenomination"  
     
     // MARK: - Initialization
     private init() {
@@ -51,6 +51,7 @@ class AuthManager: ObservableObject {
         let status = UserDefaults.standard.string(forKey: userStatusKey) ?? "active"
         let tier = UserDefaults.standard.string(forKey: userTierKey) ?? "free"
         let subscriptionExpiresAt = UserDefaults.standard.string(forKey: userSubscriptionExpiresAtKey)
+        let denomination = UserDefaults.standard.string(forKey: userDenominationKey) ?? "Christian"
         
         // ✅ CHANGED: UserSettings loads itself on init, no need to manually load here
         let loadedSettings = UserSettings.shared.settings
@@ -64,6 +65,7 @@ class AuthManager: ObservableObject {
             subscriptionTier: tier,
             subscriptionExpiresAt: subscriptionExpiresAt,
             settings: loadedSettings,
+            denomination: denomination,
             createdAt: "",
             updatedAt: ""
         )
@@ -81,6 +83,7 @@ class AuthManager: ObservableObject {
         UserDefaults.standard.set(user.name, forKey: userNameKey)
         UserDefaults.standard.set(user.status, forKey: userStatusKey)
         UserDefaults.standard.set(user.subscriptionTier, forKey: userTierKey)
+        UserDefaults.standard.set(user.denomination, forKey: userDenominationKey)
         if let expiresAt = user.subscriptionExpiresAt {
             UserDefaults.standard.set(expiresAt, forKey: userSubscriptionExpiresAtKey)
         }
@@ -108,6 +111,7 @@ class AuthManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: userStatusKey)
         UserDefaults.standard.removeObject(forKey: userTierKey)
         UserDefaults.standard.removeObject(forKey: userSubscriptionExpiresAtKey)
+        UserDefaults.standard.removeObject(forKey: userDenominationKey)  // FIXED: Clear denomination
         
         // Clear cached data to prevent data leakage between users
         UserDefaults.standard.removeObject(forKey: "cachedPrayers")

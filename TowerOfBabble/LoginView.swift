@@ -190,7 +190,10 @@ struct LoginView: View {
             errorMessage = "Error processing server response"
         case .unknown:
             errorMessage = "An unexpected error occurred"
+        case .unauthorized:
+            errorMessage = "You do not have permission to access this resource"
         }
+        
         showError = true
     }
 }

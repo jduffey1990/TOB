@@ -5,7 +5,7 @@
 //  Created by Jordan Duffey on 12/11/25.
 //  Updated by Claude on 01/06/26
 //
-//  AI-powered prayer builder with intention limits
+//  AI-powered prayer builder with intention limits and comprehensive error handling
 //
 
 import SwiftUI
@@ -22,8 +22,18 @@ struct AddPrayerView: View {
     @State private var customContext: String = ""
     @State private var generatedPrayer: String = ""
     @State private var isGenerating: Bool = false
+    
+    // Error handling states
     @State private var errorMessage: String?
+    @State private var showAlert: Bool = false
+    @State private var alertTitle: String = ""
+    @State private var alertMessage: String = ""
+    @State private var showUpgradePrompt: Bool = false
     @State private var showIntentionLimitAlert: Bool = false
+    
+    // Success handling
+    @State private var successMessage: String?
+    @State private var showSuccessMessage: Bool = false
     
     // Computed property for max intentions based on length
     private var maxIntentions: Int {
@@ -86,6 +96,15 @@ struct AddPrayerView: View {
                     // AI Preview Text
                     aiPreviewText
                     
+                    // Status messages (inline errors)
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 30)
+                            .multilineTextAlignment(.center)
+                    }
+                    
                     // Generate Button
                     generateButton
                     
@@ -112,6 +131,50 @@ struct AddPrayerView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text("To use more than \(maxIntentions) 'Pray On Its', please increase to \(prayerLength == .brief ? "Standard or Extended" : "Extended") length.")
+            }
+            .alert(alertTitle, isPresented: $showAlert) {
+                Button("OK", role: .cancel) {
+                    alertTitle = ""
+                    alertMessage = ""
+                }
+            } message: {
+                Text(alertMessage)
+            }
+            .alert("Generation Limit Reached", isPresented: $showUpgradePrompt) {
+                Button("OK", role: .cancel) {
+                    alertMessage = ""
+                }
+                // Future: Add "Upgrade" button here when upgrade flow exists
+            } message: {
+                Text(alertMessage)
+            }
+            .overlay(
+                Group {
+                    if showSuccessMessage, let message = successMessage {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text(message)
+                                    .foregroundColor(.white)
+                                    .fontWeight(.semibold)
+                            }
+                            .padding()
+                            .background(Color.black.opacity(0.8))
+                            .cornerRadius(10)
+                            .padding(.bottom, 50)
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut, value: showSuccessMessage)
+                    }
+                }
+            )
+            .onChange(of: selectedIntentions) { _ in
+                errorMessage = nil
+            }
+            .onChange(of: customContext) { _ in
+                errorMessage = nil
             }
         }
     }
@@ -483,30 +546,101 @@ struct AddPrayerView: View {
         }
     }
     
+    // MARK: - Mock Data Notice
+    
     private var mockDataNotice: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.orange)
-                Text("AI Integration Coming Soon")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        Text("")
+            .font(.caption)
+            .foregroundColor(.clear)
+            .frame(height: 0)
+    }
+    
+    // MARK: - Error Handling Functions
+    
+    private func handleGenerationError(_ error: PrayerAPIError) {
+        switch error {
+        case .unauthorized:
+            // Alert - session expired
+            alertTitle = "Session Expired"
+            alertMessage = "Please log in again to continue."
+            showAlert = true
+            
+        case .limitReached(let message):
+            // Special alert with upgrade context
+            alertTitle = "Generation Limit Reached"
+            alertMessage = message
+            showUpgradePrompt = true
+            
+        case .networkError(let message):
+            // Inline - user can retry
+            errorMessage = "Network error: \(message)"
+            
+        case .serverError(let message):
+            // Inline - includes AI service down (503)
+            if message.contains("AI service") {
+                errorMessage = "AI service temporarily unavailable. Please try again."
+            } else {
+                errorMessage = message
             }
             
-            Text("Currently using mock prayer generation. OpenAI integration will be added in Phase 3.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        case .decodingError:
+            // Inline - backend issue
+            errorMessage = "Failed to process server response. Please try again."
+            
+        case .notFound:
+            // Shouldn't happen in generation, but handle it
+            errorMessage = "An unexpected error occurred."
+            
+        case .unknown:
+            // Inline - generic
+            errorMessage = "An unexpected error occurred. Please try again."
         }
-        .padding()
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(12)
+    }
+    
+    private func handleSaveError(_ error: PrayerAPIError) {
+        switch error {
+        case .unauthorized:
+            alertTitle = "Session Expired"
+            alertMessage = "Please log in again to save your prayer."
+            showAlert = true
+            
+        case .limitReached(let message):
+            alertTitle = "Prayer Limit Reached"
+            alertMessage = message
+            showUpgradePrompt = true
+            
+        case .networkError(let message):
+            alertTitle = "Save Failed"
+            alertMessage = "Network error: \(message)"
+            showAlert = true
+            
+        case .serverError(let message):
+            alertTitle = "Save Failed"
+            alertMessage = message
+            showAlert = true
+            
+        case .decodingError:
+            alertTitle = "Save Failed"
+            alertMessage = "Failed to process server response."
+            showAlert = true
+            
+        case .notFound:
+            alertTitle = "Save Failed"
+            alertMessage = "Prayer could not be found."
+            showAlert = true
+            
+        case .unknown:
+            alertTitle = "Save Failed"
+            alertMessage = "An unexpected error occurred."
+            showAlert = true
+        }
     }
     
     // MARK: - Actions
     
     private func generatePrayer() {
         isGenerating = true
+        errorMessage = nil  // Clear previous errors
         
         // Get full Pray On It item objects
         let selectedItems = prayOnItManager.items.filter { selectedIntentions.contains($0.id) }
@@ -547,8 +681,7 @@ struct AddPrayerView: View {
                     
                 case .failure(let error):
                     print("❌ [AddPrayerView] Generation failed: \(error)")
-                    // Error already handled by prayerManager, just show to user
-                    self.errorMessage = "Failed to generate prayer. Please try again."
+                    self.handleGenerationError(error)
                 }
             }
         }
@@ -558,12 +691,22 @@ struct AddPrayerView: View {
         let title = "\(prayerType.rawValue) Prayer"
         
         prayerManager.addPrayer(title: title, text: generatedPrayer) { result in
-            switch result {
-            case .success:
-                dismiss()
-            case .failure:
-                // Error handled by prayerManager
-                break
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    // Show success message
+                    self.successMessage = "Prayer saved!"
+                    self.showSuccessMessage = true
+                    
+                    // Dismiss after 1 second
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        dismiss()
+                    }
+                    
+                case .failure(let error):
+                    print("❌ [AddPrayerView] Save failed: \(error)")
+                    self.handleSaveError(error)
+                }
             }
         }
     }
@@ -665,11 +808,11 @@ enum PrayerType: String, CaseIterable {
     
     var description: String {
         switch self {
-        case .gratitude: return "Giving thanks to God"
+        case .gratitude: return "Giving thanks"
         case .intercession: return "Praying on behalf of others"
-        case .petition: return "Requesting God's help"
-        case .confession: return "Acknowledging sins and seeking forgiveness"
-        case .praise: return "Glorifying and worshiping God"
+        case .petition: return "Requesting help"
+        case .confession: return "Acknowledging wrongdoings and seeking forgiveness"
+        case .praise: return "Glorify and worship"
         }
     }
 }
