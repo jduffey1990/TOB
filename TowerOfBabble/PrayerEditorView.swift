@@ -23,6 +23,7 @@ struct PrayerEditorView: View {
     @State private var showingError: Bool = false
     @State private var errorMessage: String = ""
     @State private var isSaving: Bool = false
+    @State private var showingImmutableInfo: Bool = false
     
     private var isImmutable: Bool {
         prayer != nil
@@ -41,14 +42,35 @@ struct PrayerEditorView: View {
                     .disabled(isSaving)
                 
                 // MARK: - Prayer Text
-                ScrollView {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 300)
-                        .padding(8)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(10)
-                        .disabled(isSaving || isImmutable)
+                ZStack {
+                    ScrollView {
+                        TextEditor(text: $text)
+                            .frame(minHeight: 300)
+                            .padding(8)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(10)
+                            .disabled(isSaving || isImmutable)
+                    }
+
+                    // Tap catcher when immutable
+                    if isImmutable {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                showingImmutableInfo = true
+                            }
+                    }
                 }
+
+                
+                if isImmutable {
+                    Text("To preserve saved MP3s, prayers that have already been generated for the selected voice cannot be edited.  Titles remain editable.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal, 4)
+                }
+
                 
                 // MARK: - Bottom Buttons (ONLY when creating new)
                 if prayer == nil {
@@ -138,6 +160,14 @@ struct PrayerEditorView: View {
             } message: {
                 Text(errorMessage)
             }
+            .alert("Prayer Text Locked", isPresented: $showingImmutableInfo) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(
+                    "To preserve saved MP3s, prayers that have already been generated for the selected voice cannot be edited."
+                )
+            }
+
         }
     }
 }

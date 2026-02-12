@@ -3,9 +3,9 @@
 //  TowerOfBabble
 //
 //  Created by Jordan Duffey on 12/11/25.
-//  Updated by Claude on 01/06/26
+//  Refactored to stepper pattern on 02/12/26
 //
-//  AI-powered prayer builder with intention limits and comprehensive error handling
+//  AI-powered prayer builder with stepper UI
 //
 
 import SwiftUI
@@ -15,6 +15,11 @@ struct AddPrayerView: View {
     @EnvironmentObject var prayOnItManager: PrayOnItManager
     @Environment(\.dismiss) var dismiss
     
+    // Step management
+    @State private var currentStep: Int = 1
+    private let totalSteps = 5
+    
+    // Form state
     @State private var selectedIntentions: Set<String> = []
     @State private var prayerLength: PrayerLength = .standard
     @State private var prayerType: PrayerType = .gratitude
@@ -35,90 +40,33 @@ struct AddPrayerView: View {
     @State private var successMessage: String?
     @State private var showSuccessMessage: Bool = false
     
+    // View state
+    @State private var showReviewScreen: Bool = false
+    
     // Computed property for max intentions based on length
     private var maxIntentions: Int {
         switch prayerLength {
         case .brief: return 3
         case .standard: return 5
-        case .extended: return Int.max // Unlimited
+        case .extended: return Int.max
         }
     }
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Step 1: Prayer Length
-                    stepSection(
-                        number: 1,
-                        title: "How long should your prayer be?",
-                        icon: "clock"
-                    ) {
-                        lengthPicker
-                    }
-                    
-                    // Step 2: Select Intentions
-                    stepSection(
-                        number: 2,
-                        title: "Who/What are you praying for?",
-                        icon: "person.3"
-                    ) {
-                        intentionsSelector
-                    }
-                    
-                    // Step 3: Prayer Type
-                    stepSection(
-                        number: 3,
-                        title: "What type of prayer?",
-                        icon: "list.bullet"
-                    ) {
-                        prayerTypePicker
-                    }
-                    
-                    // Step 4: Tone
-                    stepSection(
-                        number: 4,
-                        title: "What tone?",
-                        icon: "waveform"
-                    ) {
-                        tonePicker
-                    }
-                    
-                    // Step 5: Custom Context
-                    stepSection(
-                        number: 5,
-                        title: "Additional context (optional)",
-                        icon: "text.alignleft"
-                    ) {
-                        customContextField
-                    }
-                    
-                    // AI Preview Text
-                    aiPreviewText
-                    
-                    // Status messages (inline errors)
-                    if let error = errorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundColor(.red)
-                            .padding(.horizontal, 30)
-                            .multilineTextAlignment(.center)
-                    }
-                    
-                    // Generate Button
-                    generateButton
-                    
-                    // Generated Prayer (if any)
-                    if !generatedPrayer.isEmpty {
-                        generatedPrayerSection
-                    }
-                    
-                    // Mock data notice
-                    mockDataNotice
+            ZStack {
+                if showReviewScreen {
+                    // Review and Generate Screen
+                    reviewScreen
+                } else if !generatedPrayer.isEmpty {
+                    // Generated Prayer Screen
+                    generatedPrayerScreen
+                } else {
+                    // Stepper Flow
+                    stepperView
                 }
-                .padding()
             }
-            .navigationTitle("Create Prayer")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -144,7 +92,6 @@ struct AddPrayerView: View {
                 Button("OK", role: .cancel) {
                     alertMessage = ""
                 }
-                // Future: Add "Upgrade" button here when upgrade flow exists
             } message: {
                 Text(alertMessage)
             }
@@ -170,96 +117,153 @@ struct AddPrayerView: View {
                     }
                 }
             )
-            .onChange(of: selectedIntentions) { _ in
-                errorMessage = nil
-            }
-            .onChange(of: customContext) { _ in
-                errorMessage = nil
-            }
         }
     }
     
-    // MARK: - Subviews
+    // MARK: - Navigation Title
     
-    private func stepSection<Content: View>(
-        number: Int,
-        title: String,
-        icon: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                // Step number circle
-                ZStack {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 32, height: 32)
-                    Text("\(number)")
-                        .font(.headline)
-                        .foregroundColor(.white)
+    private var navigationTitle: String {
+        if !generatedPrayer.isEmpty {
+            return "Review Prayer"
+        } else if showReviewScreen {
+            return "Review & Generate"
+        } else {
+            return "Create Prayer"
+        }
+    }
+    
+    // MARK: - Stepper View
+    
+    private var stepperView: some View {
+        VStack(spacing: 0) {
+            // Progress Indicator
+            progressIndicator
+            
+            // Step Content
+            ScrollView {
+                VStack(spacing: 24) {
+                    stepContent
                 }
-                
-                // Icon and title
-                HStack(spacing: 8) {
-                    Image(systemName: icon)
-                        .foregroundColor(.blue)
-                    Text(title)
-                        .font(.headline)
-                }
+                .padding()
             }
             
-            content()
+            // Navigation Buttons
+            navigationButtons
         }
     }
     
-    private var lengthPicker: some View {
+    private var progressIndicator: some View {
         VStack(spacing: 8) {
-            ForEach(PrayerLength.allCases, id: \.self) { length in
-                Button(action: {
-                    prayerLength = length
-                    // If changing to a more restrictive length, trim selections
-                    if selectedIntentions.count > maxIntentions {
-                        // Keep only the first N selections
-                        let itemsToKeep = Array(selectedIntentions.prefix(maxIntentions))
-                        selectedIntentions = Set(itemsToKeep)
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: prayerLength == length ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(.blue)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(length.displayName)
-                                .foregroundColor(.primary)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text(length.description)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+            HStack(spacing: 4) {
+                ForEach(1...totalSteps, id: \.self) { step in
+                    Rectangle()
+                        .fill(step <= currentStep ? Color.blue : Color.gray.opacity(0.3))
+                        .frame(height: 4)
+                        .cornerRadius(2)
+                }
+            }
+            .padding(.horizontal)
+            
+            Text("Step \(currentStep) of \(totalSteps)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+    }
+    
+    @ViewBuilder
+    private var stepContent: some View {
+        switch currentStep {
+        case 1:
+            lengthStep
+        case 2:
+            intentionsStep
+        case 3:
+            typeStep
+        case 4:
+            toneStep
+        case 5:
+            contextStep
+        default:
+            EmptyView()
+        }
+    }
+    
+    // MARK: - Step 1: Length
+    
+    private var lengthStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepHeader(
+                icon: "clock",
+                title: "How long should your prayer be?",
+                description: "Choose the duration that fits your needs"
+            )
+            
+            VStack(spacing: 12) {
+                ForEach(PrayerLength.allCases, id: \.self) { length in
+                    selectionButton(
+                        isSelected: prayerLength == length,
+                        title: length.displayName,
+                        description: length.description
+                    ) {
+                        prayerLength = length
+                        // Trim selections if changing to more restrictive length
+                        if selectedIntentions.count > maxIntentions {
+                            let itemsToKeep = Array(selectedIntentions.prefix(maxIntentions))
+                            selectedIntentions = Set(itemsToKeep)
                         }
-                        Spacer()
                     }
-                    .padding(12)
-                    .background(
-                        prayerLength == length ?
-                        Color.blue.opacity(0.1) :
-                        Color(.systemGray6)
-                    )
-                    .cornerRadius(12)
                 }
             }
         }
+    }
+    
+    // MARK: - Step 2: Intentions
+    
+    private var intentionsStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepHeader(
+                icon: "person.3",
+                title: "Who/What are you praying for?",
+                description: "Optional - Select from your 'Pray On It' list or tap Next to skip"
+            )
+            
+            if prayOnItManager.items.isEmpty {
+                emptyIntentionsState
+            } else {
+                intentionsSelector
+            }
+        }
+    }
+    
+    private var emptyIntentionsState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 50))
+                .foregroundColor(.orange)
+            Text("No Pray On It items yet")
+                .font(.headline)
+            Text("Add people or intentions to pray for in the Pray On It tab, or skip this step")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(32)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(16)
     }
     
     private var intentionsSelector: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Select from your 'Pray On It' list:")
+                Text("Select intentions:")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
                 Spacer()
                 
-                // Show count and limit
                 if prayerLength != .extended {
                     Text("\(selectedIntentions.count)/\(maxIntentions)")
                         .font(.caption)
@@ -285,32 +289,13 @@ struct AddPrayerView: View {
                 }
             }
             
-            if prayOnItManager.items.isEmpty {
-                // Empty state
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text("No Pray On It items yet")
-                        .font(.headline)
-                    Text("Add people or intentions to pray for in the Pray On It tab")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(12)
-            } else {
-                FlowLayout(spacing: 8) {
-                    ForEach(prayOnItManager.items) { item in
-                        IntentionChip(
-                            title: item.name,
-                            isSelected: selectedIntentions.contains(item.id)
-                        ) {
-                            handleIntentionToggle(itemId: item.id)
-                        }
+            FlowLayout(spacing: 8) {
+                ForEach(prayOnItManager.items) { item in
+                    IntentionChip(
+                        title: item.name,
+                        isSelected: selectedIntentions.contains(item.id)
+                    ) {
+                        handleIntentionToggle(itemId: item.id)
                     }
                 }
             }
@@ -322,10 +307,8 @@ struct AddPrayerView: View {
     
     private func handleIntentionToggle(itemId: String) {
         if selectedIntentions.contains(itemId) {
-            // Always allow deselection
             selectedIntentions.remove(itemId)
         } else {
-            // Check if we can add more
             if selectedIntentions.count >= maxIntentions {
                 showIntentionLimitAlert = true
             } else {
@@ -334,115 +317,227 @@ struct AddPrayerView: View {
         }
     }
     
-    private var prayerTypePicker: some View {
-        VStack(spacing: 8) {
-            ForEach(PrayerType.allCases, id: \.self) { type in
-                Button(action: {
-                    prayerType = type
-                }) {
-                    HStack {
-                        Image(systemName: prayerType == type ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(.blue)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(type.displayName)
-                                .foregroundColor(.primary)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text(type.description)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(
-                        prayerType == type ?
-                        Color.blue.opacity(0.1) :
-                        Color(.systemGray6)
-                    )
-                    .cornerRadius(12)
-                }
-            }
-        }
-    }
+    // MARK: - Step 3: Type
     
-    private var tonePicker: some View {
-        VStack(spacing: 8) {
-            ForEach(PrayerTone.allCases, id: \.self) { toneOption in
-                Button(action: {
-                    tone = toneOption
-                }) {
-                    HStack {
-                        Image(systemName: tone == toneOption ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(.blue)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(toneOption.displayName)
-                                .foregroundColor(.primary)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text(toneOption.description)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(
-                        tone == toneOption ?
-                        Color.blue.opacity(0.1) :
-                        Color(.systemGray6)
-                    )
-                    .cornerRadius(12)
-                }
-            }
-        }
-    }
-    
-    private var customContextField: some View {
-        TextEditor(text: $customContext)
-            .frame(minHeight: 100)
-            .padding(8)
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-            .overlay(
-                Group {
-                    if customContext.isEmpty {
-                        Text("Add any specific details...")
-                            .foregroundColor(.gray)
-                            .padding(.leading, 12)
-                            .padding(.top, 16)
-                    }
-                },
-                alignment: .topLeading
+    private var typeStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepHeader(
+                icon: "list.bullet",
+                title: "What type of prayer?",
+                description: "Choose the focus of your prayer"
             )
+            
+            VStack(spacing: 12) {
+                ForEach(PrayerType.allCases, id: \.self) { type in
+                    selectionButton(
+                        isSelected: prayerType == type,
+                        title: type.displayName,
+                        description: type.description
+                    ) {
+                        prayerType = type
+                    }
+                }
+            }
+        }
     }
     
-    // MARK: - AI Preview Text
+    // MARK: - Step 4: Tone
     
-    private var aiPreviewText: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var toneStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepHeader(
+                icon: "waveform",
+                title: "What tone?",
+                description: "Select the style of language"
+            )
+            
+            VStack(spacing: 12) {
+                ForEach(PrayerTone.allCases, id: \.self) { toneOption in
+                    selectionButton(
+                        isSelected: tone == toneOption,
+                        title: toneOption.displayName,
+                        description: toneOption.description
+                    ) {
+                        tone = toneOption
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Step 5: Context
+    
+    private var contextStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            stepHeader(
+                icon: "text.alignleft",
+                title: "Additional context",
+                description: "Optional - Add specific details or leave blank"
+            )
+            
+            TextEditor(text: $customContext)
+                .frame(minHeight: 200)
+                .padding(8)
+                .background(Color(.systemGray6))
+                .cornerRadius(12)
+                .overlay(
+                    Group {
+                        if customContext.isEmpty {
+                            Text("E.g., 'My mother is recovering from surgery' or 'Seeking guidance on a career decision'")
+                                .foregroundColor(.gray)
+                                .padding(.leading, 16)
+                                .padding(.trailing, 16)
+                                .padding(.top, 24)
+                        }
+                    },
+                    alignment: .topLeading
+                )
+        }
+    }
+    
+    // MARK: - Review Screen
+    
+    private var reviewScreen: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Review Your Choices")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text("Check everything looks good before generating")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                
+                // Review Cards
+                reviewCard(
+                    icon: "clock",
+                    title: "Length",
+                    value: prayerLength.displayName
+                ) {
+                    currentStep = 1
+                    showReviewScreen = false
+                }
+                
+                reviewCard(
+                    icon: "person.3",
+                    title: "Pray On Its",
+                    value: selectedIntentions.isEmpty ? "None selected" : "\(selectedIntentions.count) selected"
+                ) {
+                    currentStep = 2
+                    showReviewScreen = false
+                }
+                
+                reviewCard(
+                    icon: "list.bullet",
+                    title: "Type",
+                    value: prayerType.displayName
+                ) {
+                    currentStep = 3
+                    showReviewScreen = false
+                }
+                
+                reviewCard(
+                    icon: "waveform",
+                    title: "Tone",
+                    value: tone.displayName
+                ) {
+                    currentStep = 4
+                    showReviewScreen = false
+                }
+                
+                reviewCard(
+                    icon: "text.alignleft",
+                    title: "Custom Context",
+                    value: customContext.isEmpty ? "None" : customContext
+                ) {
+                    currentStep = 5
+                    showReviewScreen = false
+                }
+                
+                // AI Preview
+                aiPreviewSection
+                
+                // Error message
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                }
+                
+                // Generate Button
+                Button(action: generatePrayer) {
+                    HStack {
+                        if isGenerating {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            Text("Generating...")
+                        } else {
+                            Image(systemName: "sparkles")
+                            Text("Generate Prayer with AI")
+                        }
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(canGenerate ? Color.blue : Color.gray)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                }
+                .disabled(!canGenerate)
+                .padding(.horizontal)
+                .padding(.bottom)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Back") {
+                    showReviewScreen = false
+                    currentStep = totalSteps
+                }
+            }
+        }
+    }
+    
+    private var canGenerate: Bool {
+        guard !isGenerating else { return false }
+        return !selectedIntentions.isEmpty || !customContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    private var aiPreviewSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "sparkles")
                     .foregroundColor(.purple)
-                    .font(.caption)
                 Text("AI will create:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.headline)
             }
             
             Text(generatePreviewText())
-                .font(.subheadline)
+                .font(.body)
                 .foregroundColor(.primary)
                 .italic()
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.purple.opacity(0.1))
+                .cornerRadius(12)
         }
-        .padding()
-        .background(Color.purple.opacity(0.1))
-        .cornerRadius(12)
+        .padding(.horizontal)
     }
     
     private func generatePreviewText() -> String {
         guard !selectedIntentions.isEmpty else {
-            return "Select a 'pray on it' item or enter a prompt to get started"
+            if !customContext.isEmpty {
+                return "A \(prayerLength.displayName.lowercased()), \(tone.displayName.lowercased()) \(prayerType.displayName.lowercased()) prayer based on your custom context"
+            }
+            return "Select a 'pray on it' item or enter context to preview"
         }
         
         let selectedItems = prayOnItManager.items.filter { selectedIntentions.contains($0.id) }
@@ -458,125 +553,320 @@ struct AddPrayerView: View {
             namesText = "\(firstTwo), and \(names.count - 2) other\(names.count - 2 == 1 ? "" : "s")"
         }
         
-        let lengthText = prayerLength.displayName.lowercased()
-        let toneText = tone.displayName.lowercased()
-        let typeText = prayerType.displayName.lowercased()
-        
-        return "A \(lengthText), \(toneText) \(typeText) prayer for \(namesText)"
+        return "A \(prayerLength.displayName.lowercased()), \(tone.displayName.lowercased()) \(prayerType.displayName.lowercased()) prayer for \(namesText)"
     }
     
-    // MARK: - Generate Button
+    // MARK: - Generated Prayer Screen
     
-    private var generateButton: some View {
-        Button(action: generatePrayer) {
-            HStack {
-                if isGenerating {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    Text("Generating...")
-                } else {
-                    Image(systemName: "sparkles")
-                    Text("Generate Prayer with AI")
-                }
-            }
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(canGenerate ? Color.blue : Color.gray)
-            .foregroundColor(.white)
-            .cornerRadius(12)
-        }
-        .disabled(!canGenerate)
-    }
-    
-    private var canGenerate: Bool {
-        guard !isGenerating else { return false }
-        // Can generate if either has selected intentions OR has custom context
-        return !selectedIntentions.isEmpty || !customContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-    
-    private var generatedPrayerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "sparkles")
-                    .foregroundColor(.blue)
-                Text("Generated Prayer")
-                    .font(.headline)
-            }
-            
-            // Make the text editable with TextEditor
-            TextEditor(text: $generatedPrayer)
-                .font(.body)
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .frame(minHeight: 150) // Ensures adequate editing space
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                )
-            
-            // Optional: Add a hint that it's editable
-            Text("Tap to edit prayer before saving")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .italic()
-            
-            HStack(spacing: 12) {
-                Button(action: savePrayer) {
-                    Label("Save Prayer", systemImage: "checkmark.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+    private var generatedPrayerScreen: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .foregroundColor(.blue)
+                        Text("Generated Prayer")
+                            .font(.headline)
+                    }
+                    
+                    TextEditor(text: $generatedPrayer)
+                        .font(.body)
                         .padding()
-                        .background(Color.green)
-                        .foregroundColor(.white)
+                        .background(Color(.systemGray6))
                         .cornerRadius(12)
+                        .frame(minHeight: 200)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                        )
+                    
+                    Text("Tap to edit prayer before saving")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .italic()
                 }
                 
-                Button(action: startOver) {
-                    Label("Start Over", systemImage: "arrow.counterclockwise")
-                        .font(.headline)
+                HStack(spacing: 12) {
+                    Button(action: savePrayer) {
+                        Label("Save Prayer", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    
+                    Button(action: startOver) {
+                        Label("Start Over", systemImage: "arrow.counterclockwise")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                }
+            }
+            .padding()
+        }
+    }
+    
+    // MARK: - Navigation Buttons
+    
+    private var navigationButtons: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 16) {
+                // Back button
+                if currentStep > 1 {
+                    Button(action: previousStep) {
+                        HStack {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.orange)
-                        .foregroundColor(.white)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
                         .cornerRadius(12)
+                    }
+                }
+                
+                // Next/Review button
+                Button(action: nextStep) {
+                    HStack {
+                        Text(nextButtonTitle)
+                        if currentStep == totalSteps {
+                            Image(systemName: "chevron.right")
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                }
+            }
+            .padding()
+        }
+        .background(Color(.systemBackground))
+    }
+    
+    private var nextButtonTitle: String {
+        if currentStep == 5 {
+            return customContext.isEmpty ? "Skip" : "Next"
+        } else if currentStep == totalSteps {
+            return "Review"
+        } else {
+            return "Next"
+        }
+    }
+    
+    // MARK: - Reusable Components
+    
+    private func stepHeader(icon: String, title: String, description: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(.blue)
+                Text(title)
+                    .font(.title2)
+                    .fontWeight(.bold)
+            }
+            
+            Text(description)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private func selectionButton(isSelected: Bool, title: String, description: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(.blue)
+                    .font(.title3)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .foregroundColor(.primary)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                    Text(description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+            .padding(16)
+            .background(
+                isSelected ?
+                Color.blue.opacity(0.15) :
+                Color(.systemGray6)
+            )
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            )
+        }
+    }
+    
+    private func reviewCard(icon: String, title: String, value: String, editAction: @escaping () -> Void) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .foregroundColor(.blue)
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                }
+                
+                Text(value)
+                    .font(.body)
+                    .foregroundColor(.primary)
+            }
+            
+            Spacer()
+            
+            Button(action: editAction) {
+                Text("Edit")
+                    .font(.subheadline)
+                    .foregroundColor(.blue)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+    
+    // MARK: - Navigation Actions
+    
+    private func nextStep() {
+        if currentStep < totalSteps {
+            withAnimation {
+                currentStep += 1
+            }
+        } else {
+            // Go to review
+            withAnimation {
+                showReviewScreen = true
+            }
+        }
+    }
+    
+    private func previousStep() {
+        if currentStep > 1 {
+            withAnimation {
+                currentStep -= 1
+            }
+        }
+    }
+    
+    // MARK: - API Actions
+    
+    private func generatePrayer() {
+        isGenerating = true
+        errorMessage = nil
+        
+        let selectedItems = prayOnItManager.items.filter { selectedIntentions.contains($0.id) }
+        
+        let requestPayload: [String: Any] = [
+            "prayOnItItems": selectedItems.map { item in
+                [
+                    "id": item.id,
+                    "name": item.name,
+                    "category": item.category.rawValue,
+                    "relationship": item.relationship as Any,
+                    "prayerFocus": item.prayerFocus?.rawValue as Any,
+                    "notes": item.notes as Any
+                ]
+            },
+            "prayerType": prayerType.rawValue.lowercased(),
+            "tone": tone.rawValue.lowercased(),
+            "length": prayerLength.rawValue.lowercased(),
+            "customContext": customContext.isEmpty ? NSNull() : customContext
+        ]
+        
+        print("📤 [AddPrayerView] Sending prompt generation request")
+        
+        prayerManager.postPrompt(requestPayload) { result in
+            DispatchQueue.main.async {
+                self.isGenerating = false
+                
+                switch result {
+                case .success(let generatedText):
+                    print("✅ [AddPrayerView] Prayer generated successfully")
+                    self.generatedPrayer = generatedText
+                    self.showReviewScreen = false
+                    
+                case .failure(let error):
+                    print("❌ [AddPrayerView] Generation failed: \(error)")
+                    self.handleGenerationError(error)
                 }
             }
         }
     }
     
-    // MARK: - Mock Data Notice
-    
-    private var mockDataNotice: some View {
-        Text("")
-            .font(.caption)
-            .foregroundColor(.clear)
-            .frame(height: 0)
+    private func savePrayer() {
+        let title = "\(prayerType.rawValue) Prayer"
+        
+        prayerManager.addPrayer(title: title, text: generatedPrayer) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self.successMessage = "Prayer saved!"
+                    self.showSuccessMessage = true
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        dismiss()
+                    }
+                    
+                case .failure(let error):
+                    print("❌ [AddPrayerView] Save failed: \(error)")
+                    self.handleSaveError(error)
+                }
+            }
+        }
     }
     
-    // MARK: - Error Handling Functions
+    private func startOver() {
+        generatedPrayer = ""
+        errorMessage = nil
+        selectedIntentions.removeAll()
+        prayerLength = .standard
+        prayerType = .gratitude
+        tone = .conversational
+        customContext = ""
+        currentStep = 1
+        showReviewScreen = false
+        
+        print("🔄 [AddPrayerView] Form reset to defaults")
+    }
+    
+    // MARK: - Error Handling
     
     private func handleGenerationError(_ error: PrayerAPIError) {
         switch error {
         case .unauthorized:
-            // Alert - session expired
             alertTitle = "Session Expired"
             alertMessage = "Please log in again to continue."
             showAlert = true
             
         case .limitReached(let message):
-            // Special alert with upgrade context
             alertTitle = "Generation Limit Reached"
             alertMessage = message
             showUpgradePrompt = true
             
         case .networkError(let message):
-            // Inline - user can retry
             errorMessage = "Network error: \(message)"
             
         case .serverError(let message):
-            // Inline - includes AI service down (503)
             if message.contains("AI service") {
                 errorMessage = "AI service temporarily unavailable. Please try again."
             } else {
@@ -584,15 +874,12 @@ struct AddPrayerView: View {
             }
             
         case .decodingError:
-            // Inline - backend issue
             errorMessage = "Failed to process server response. Please try again."
             
         case .notFound:
-            // Shouldn't happen in generation, but handle it
             errorMessage = "An unexpected error occurred."
             
         case .unknown:
-            // Inline - generic
             errorMessage = "An unexpected error occurred. Please try again."
         }
     }
@@ -635,96 +922,6 @@ struct AddPrayerView: View {
             showAlert = true
         }
     }
-    
-    // MARK: - Actions
-    
-    private func generatePrayer() {
-        isGenerating = true
-        errorMessage = nil  // Clear previous errors
-        
-        // Get full Pray On It item objects
-        let selectedItems = prayOnItManager.items.filter { selectedIntentions.contains($0.id) }
-        
-        // Build request payload - NOTE: expansiveness removed
-        let requestPayload: [String: Any] = [
-            "prayOnItItems": selectedItems.map { item in
-                [
-                    "id": item.id,
-                    "name": item.name,
-                    "category": item.category.rawValue,
-                    "relationship": item.relationship as Any,
-                    "prayerFocus": item.prayerFocus?.rawValue as Any,
-                    "notes": item.notes as Any
-                ]
-            },
-            "prayerType": prayerType.rawValue.lowercased(),
-            "tone": tone.rawValue.lowercased(),
-            "length": prayerLength.rawValue.lowercased(),
-            "customContext": customContext.isEmpty ? NSNull() : customContext
-        ]
-        
-        print("📤 [AddPrayerView] Sending prompt generation request")
-        print("   Prayer Type: \(prayerType.rawValue)")
-        print("   Tone: \(tone.rawValue)")
-        print("   Length: \(prayerLength.rawValue)")
-        print("   Selected Items: \(selectedItems.map { $0.name }.joined(separator: ", "))")
-        
-        // Call PrayerManager to post prompt
-        prayerManager.postPrompt(requestPayload) { result in
-            DispatchQueue.main.async {
-                self.isGenerating = false
-                
-                switch result {
-                case .success(let generatedText):
-                    print("✅ [AddPrayerView] Prayer generated successfully")
-                    self.generatedPrayer = generatedText
-                    
-                case .failure(let error):
-                    print("❌ [AddPrayerView] Generation failed: \(error)")
-                    self.handleGenerationError(error)
-                }
-            }
-        }
-    }
-    
-    private func savePrayer() {
-        let title = "\(prayerType.rawValue) Prayer"
-        
-        prayerManager.addPrayer(title: title, text: generatedPrayer) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    // Show success message
-                    self.successMessage = "Prayer saved!"
-                    self.showSuccessMessage = true
-                    
-                    // Dismiss after 1 second
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        dismiss()
-                    }
-                    
-                case .failure(let error):
-                    print("❌ [AddPrayerView] Save failed: \(error)")
-                    self.handleSaveError(error)
-                }
-            }
-        }
-    }
-    
-    private func startOver() {
-        // Clear generated prayer
-        generatedPrayer = ""
-        errorMessage = nil
-        
-        // Reset to defaults
-        selectedIntentions.removeAll()
-        prayerLength = .standard
-        prayerType = .gratitude
-        tone = .conversational
-        customContext = ""
-        
-        print("🔄 [AddPrayerView] Form reset to defaults")
-    }
 }
 
 // MARK: - Supporting Views
@@ -747,7 +944,6 @@ struct IntentionChip: View {
     }
 }
 
-// Simple flow layout for wrapping chips
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
     
@@ -860,9 +1056,9 @@ enum PrayerLength: String, CaseIterable {
     
     var estimatedWordCount: Int {
         switch self {
-        case .brief: return 125        // ~125 words ≈ 1 min at normal speed
-        case .standard: return 250     // ~250 words ≈ 2 min at normal speed
-        case .extended: return 450     // ~450 words ≈ 3 min at normal speed
+        case .brief: return 125
+        case .standard: return 250
+        case .extended: return 450
         }
     }
 }
