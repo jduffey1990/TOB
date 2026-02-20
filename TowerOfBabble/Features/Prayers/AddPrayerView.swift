@@ -574,7 +574,7 @@ struct AddPrayerView: View {
                         .padding()
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
-                        .frame(minHeight: 200)
+                        .frame(minHeight: 500)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.blue.opacity(0.3), lineWidth: 1)

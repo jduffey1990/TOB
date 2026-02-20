@@ -46,6 +46,8 @@
 		CE2BA0072F462DB100EB8D2D /* selene_preview.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = CE2B9FBF2F462DB100EB8D2D /* selene_preview.mp3 */; };
 		CE2BA0082F462DB100EB8D2D /* sonia_neural.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = CE2B9FC02F462DB100EB8D2D /* sonia_neural.mp3 */; };
 		CE2BA0092F462DB100EB8D2D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CE2B9FC42F462DB100EB8D2D /* Assets.xcassets */; };
+		CE2BA0652F48296600EB8D2D /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE2BA0642F48295A00EB8D2D /* SubscriptionService.swift */; };
+		CE2BA0672F48297800EB8D2D /* TierEnforcementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE2BA0662F48297600EB8D2D /* TierEnforcementView.swift */; };
 		CE99262B2EE357FC003D71CB /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = CE99262A2EE357F5003D71CB /* .gitignore */; };
 /* End PBXBuildFile section */
 
@@ -89,6 +91,8 @@
 		CE2B9FDF2F462DB100EB8D2D /* VoicePreviewManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePreviewManager.swift; sourceTree = "<group>"; };
 		CE2B9FE02F462DB100EB8D2D /* VoiceSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSelectionView.swift; sourceTree = "<group>"; };
 		CE2B9FE12F462DB100EB8D2D /* VoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceService.swift; sourceTree = "<group>"; };
+		CE2BA0642F48295A00EB8D2D /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionService.swift; sourceTree = "<group>"; };
+		CE2BA0662F48297600EB8D2D /* TierEnforcementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TierEnforcementView.swift; sourceTree = "<group>"; };
 		CE99262A2EE357F5003D71CB /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 		CED8E4BE2EE2455700303161 /* TowerOfBabble.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TowerOfBabble.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -157,6 +161,7 @@
 		CE2BA00C2F462DD400EB8D2D /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				CE2BA0642F48295A00EB8D2D /* SubscriptionService.swift */,
 				CE2B9FC92F462DB100EB8D2D /* config.swift */,
 				CE2B9FC32F462DB100EB8D2D /* APIClient.swift */,
 			);
@@ -166,6 +171,7 @@
 		CE2BA00D2F462DDA00EB8D2D /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				CE2BA0662F48297600EB8D2D /* TierEnforcementView.swift */,
 				CE2B9FDC2F462DB100EB8D2D /* SubscriptionStatusCard.swift */,
 				CE2B9FC52F462DB100EB8D2D /* AudioPlayerManager.swift */,
 			);
@@ -345,6 +351,7 @@
 				CE2B9FEA2F462DB100EB8D2D /* DefaultPrayers.swift in Sources */,
 				CE2B9FEB2F462DB100EB8D2D /* DefaultPrayersView.swift in Sources */,
 				CE2B9FEC2F462DB100EB8D2D /* DenominationEditView.swift in Sources */,
+				CE2BA0652F48296600EB8D2D /* SubscriptionService.swift in Sources */,
 				CE2B9FED2F462DB100EB8D2D /* DenominationSelectionView.swift in Sources */,
 				CE2B9FEE2F462DB100EB8D2D /* ForgotPasswordView.swift in Sources */,
 				CE2B9FEF2F462DB100EB8D2D /* LoginView.swift in Sources */,
@@ -353,6 +360,7 @@
 				CE2B9FF22F462DB100EB8D2D /* PrayerEditorView.swift in Sources */,
 				CE2B9FF32F462DB100EB8D2D /* PrayerManager.swift in Sources */,
 				CE2B9FF42F462DB100EB8D2D /* PrayersListView.swift in Sources */,
+				CE2BA0672F48297800EB8D2D /* TierEnforcementView.swift in Sources */,
 				CE2B9FF52F462DB100EB8D2D /* PrayOnItApiService.swift in Sources */,
 				CE2B9FF62F462DB100EB8D2D /* PrayOnItManager.swift in Sources */,
 				CE2B9FF72F462DB100EB8D2D /* PrayOnItView.swift in Sources */,

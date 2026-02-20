@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 struct PrayersListView: View {
     @Binding var selectedTab: Int
@@ -291,118 +292,259 @@ enum UpgradeReason {
 struct UpgradePlaceholderView: View {
     @Environment(\.dismiss) var dismiss
     let reason: UpgradeReason
-    
+
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+
+    @State private var selectedBilling: BillingPeriod = .annual
+    @State private var purchaseError: String?
+    @State private var showingSuccessAlert = false
+    @State private var purchasedTierName: String = ""
+
+    enum BillingPeriod {
+        case annual, monthly
+    }
+
     var body: some View {
         NavigationView {
-            VStack(spacing: 24) {
-                Spacer()
-                
-                Image(systemName: iconForReason)
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
-                
-                Text(titleForReason)
-                    .font(.system(size: 32, weight: .bold))
-                
-                Text(messageForReason)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                
-                VStack(alignment: .leading, spacing: 16) {
-                    FeatureRow(icon: "checkmark.circle.fill", text: "20 AI prayer builds/month")
-                    FeatureRow(icon: "checkmark.circle.fill", text: "20 saved prayers")
-                    FeatureRow(icon: "checkmark.circle.fill", text: "10 pray on it features")
-                    FeatureRow(icon: "checkmark.circle.fill", text: "Premium voice options")
-                    
-                }
-                .padding(.horizontal, 40)
-                .padding(.top, 20)
-                
-                Spacer()
-                
-                VStack(spacing: 12) {
-                    Button(action: {
-                        // TODO: Implement actual purchase flow
-                        print("Annual purchase tapped")
-                    }) {
-                        VStack(spacing: 4) {
-                            Text("$9.99/year")
-                                .font(.headline)
-                            Text("Save 50%")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                    }
-                    
-                    Button(action: {
-                        // TODO: Implement actual purchase flow
-                        print("Monthly purchase tapped")
-                    }) {
-                        Text("$1.99/month")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue.opacity(0.1))
+            ScrollView {
+                VStack(spacing: 28) {
+
+                    // ── Header ──────────────────────────────────────
+                    VStack(spacing: 8) {
+                        Image(systemName: iconForReason)
+                            .font(.system(size: 64))
                             .foregroundColor(.blue)
-                            .cornerRadius(12)
+
+                        Text(titleForReason)
+                            .font(.system(size: 28, weight: .bold))
+                            .multilineTextAlignment(.center)
+
+                        Text(messageForReason)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
                     }
+                    .padding(.top, 8)
+
+                    // ── Billing Toggle ───────────────────────────────
+                    Picker("Billing", selection: $selectedBilling) {
+                        Text("Annual").tag(BillingPeriod.annual)
+                        Text("Monthly").tag(BillingPeriod.monthly)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 32)
+
+                    if selectedBilling == .annual {
+                        Text("Save over 50% with annual billing")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .fontWeight(.medium)
+                    }
+
+                    // ── Tier Cards ───────────────────────────────────
+                    VStack(spacing: 16) {
+                        tierCard(
+                            name:       "Pro",
+                            color:      .blue,
+                            icon:       "star.circle.fill",
+                            features:   ["20 saved prayers", "20 AI generations/month", "10 Pray On It items", "Premium voices"],
+                            productID:  selectedBilling == .annual
+                                            ? TOBProductID.proAnnual
+                                            : TOBProductID.proMonthly
+                        )
+
+                        tierCard(
+                            name:       "Prayer Warrior",
+                            color:      .purple,
+                            icon:       "crown.fill",
+                            features:   ["50 saved prayers", "3 AI generations/day (~90/mo)", "25 Pray On It items", "All voices unlocked"],
+                            productID:  selectedBilling == .annual
+                                            ? TOBProductID.warriorAnnual
+                                            : TOBProductID.warriorMonthly
+                        )
+                    }
+                    .padding(.horizontal, 20)
+
+                    // ── Error ────────────────────────────────────────
+                    if let error = purchaseError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+
+                    // ── Restore ──────────────────────────────────────
+                    Button(action: restorePurchases) {
+                        Text("Restore Purchases")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 20)
+                .padding(.vertical, 16)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        dismiss()
+                    Button("Close") { dismiss() }
+                        .disabled(subscriptionService.isPurchasing)
+                }
+            }
+            .alert("Welcome!", isPresented: $showingSuccessAlert) {
+                Button("Let's Go!") { dismiss() }
+            } message: {
+                Text("You're now on the \(purchasedTierName) plan. Enjoy your upgraded experience!")
+            }
+        }
+    }
+
+    // MARK: - Tier Card
+
+    @ViewBuilder
+    private func tierCard(
+        name:      String,
+        color:     Color,
+        icon:      String,
+        features:  [String],
+        productID: TOBProductID
+    ) -> some View {
+        let product = subscriptionService.product(for: productID)
+        let price   = product?.displayPrice ?? "—"
+        let suffix  = selectedBilling == .annual ? "/yr" : "/mo"
+
+        VStack(alignment: .leading, spacing: 14) {
+
+            // Card header
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                Text(name)
+                    .font(.headline)
+                    .foregroundColor(color)
+                Spacer()
+                Text("\(price)\(suffix)")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+            }
+
+            Divider()
+
+            // Feature list
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(features, id: \.self) { feature in
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(color)
+                            .font(.caption)
+                        Text(feature)
+                            .font(.subheadline)
                     }
+                }
+            }
+
+            // Purchase button
+            Button(action: { purchase(productID) }) {
+                HStack {
+                    if subscriptionService.isPurchasing {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                    }
+                    Text(subscriptionService.isPurchasing ? "Processing..." : "Subscribe — \(price)\(suffix)")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(color)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+            .disabled(subscriptionService.isPurchasing || product == nil)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.systemBackground))
+                .shadow(color: color.opacity(0.15), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(color.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Actions
+
+    private func purchase(_ productID: TOBProductID) {
+        guard let product = subscriptionService.product(for: productID) else {
+            purchaseError = "Product unavailable. Check your connection and try again."
+            return
+        }
+
+        purchaseError = nil
+
+        Task {
+            let result = await subscriptionService.purchase(product)
+
+            await MainActor.run {
+                switch result {
+                case .success(let tier):
+                    purchasedTierName = tier == "prayer_warrior" ? "Prayer Warrior" : "Pro"
+                    showingSuccessAlert = true
+
+                case .cancelled:
+                    break  // User cancelled — no message needed
+
+                case .failed(let error):
+                    purchaseError = error.localizedDescription
                 }
             }
         }
     }
-    
-    // MARK: - Computed Properties for Dynamic Content
-    
+
+    private func restorePurchases() {
+        Task {
+            await subscriptionService.restorePurchases()
+            await MainActor.run {
+                dismiss()
+            }
+        }
+    }
+
+    // MARK: - Reason-Based Content
+
     private var iconForReason: String {
         switch reason {
-        case .prayerLimitReached:
-            return "exclamationmark.triangle.fill"
-        case .aiCreditsExhausted:
-            return "sparkles.rectangle.stack"
-        case .premiumFeature:
-            return "star.circle.fill"
+        case .prayerLimitReached:  return "exclamationmark.triangle.fill"
+        case .aiCreditsExhausted:  return "sparkles.rectangle.stack"
+        case .premiumFeature:      return "star.circle.fill"
         }
     }
-    
+
     private var titleForReason: String {
         switch reason {
-        case .prayerLimitReached:
-            return "Prayer Limit Reached"
-        case .aiCreditsExhausted:
-            return "Out of AI Credits"
-        case .premiumFeature:
-            return "Upgrade to Pro"
+        case .prayerLimitReached:  return "Prayer Limit Reached"
+        case .aiCreditsExhausted:  return "Out of AI Credits"
+        case .premiumFeature:      return "Upgrade Your Plan"
         }
     }
-    
+
     private var messageForReason: String {
         switch reason {
         case .prayerLimitReached:
-            return "You've reached your limit of 5 prayers. Upgrade to Pro for 20 prayer slots!"
+            return "You've hit your free tier limit. Upgrade to save more prayers and unlock premium features."
         case .aiCreditsExhausted:
-            return "You've used all your AI generations. Upgrade for more AI-powered prayers!"
+            return "You've used all your AI generations. Upgrade for more AI-powered prayers."
         case .premiumFeature:
-            return "Get 20 prayer slots and premium voices"
+            return "Unlock more prayers, AI generations, and beautiful voices."
         }
     }
 }
+
+// MARK: - FeatureRow (keep this — used elsewhere)
 
 struct FeatureRow: View {
     let icon: String

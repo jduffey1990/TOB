@@ -11,6 +11,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @Environment(\.scenePhase) var scenePhase
     @ObservedObject private var prayerManager = PrayerManager.shared
     @ObservedObject private var prayOnItManager = PrayOnItManager.shared
     @State private var selectedTab = 4 // Start on "My Prayers" tab
@@ -19,6 +20,7 @@ struct MainTabView: View {
     @State private var showingUpgradeSheet = false    // Upgrade prompt
     @State private var showingOutOfAISheet = false
     @State private var upgradeReason: UpgradeReason = .premiumFeature
+    @State private var showingTierEnforcement = false
     
     private var isAddPrayerDisabled: Bool {
         selectedTab == 1
@@ -58,6 +60,9 @@ struct MainTabView: View {
             
             // Custom Tab Bar
             customTabBar
+        }
+        .fullScreenCover(isPresented: $showingTierEnforcement) {      
+            TierEnforcementView()
         }
         .sheet(isPresented: $showingAddPrayer) {
             AddPrayerView()
@@ -157,7 +162,45 @@ struct MainTabView: View {
             PrayerEditorView(prayer: nil)
                 .environmentObject(prayerManager)
         }
+        .onReceive(prayerManager.$prayerStats) { stats in
+            evaluateTierEnforcement()
+        }
+
+        .onReceive(prayOnItManager.$stats) { _ in
+            evaluateTierEnforcement()
+        }
+
+        .onReceive(NotificationCenter.default.publisher(
+            for: .tierEnforcementComplete)
+        ) { _ in
+            evaluateTierEnforcement()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                prayerManager.loadStats()
+                prayOnItManager.fetchStats()
+            }
+        }
         .ignoresSafeArea(.keyboard) // Prevent tab bar from moving with keyboard
+    }
+    
+    private func evaluateTierEnforcement() {
+        guard let prayerStats = prayerManager.prayerStats else { return }
+
+        let prayerCount = prayerStats.prayers.current
+        let prayerLimit = prayerStats.prayers.limit ?? Int.max
+
+        let prayOnItCount = prayOnItManager.currentCount
+        let prayOnItLimit = prayOnItManager.limit ?? Int.max
+
+        let isOver = prayerCount > prayerLimit || prayOnItCount > prayOnItLimit
+
+        // Only show if actually over limit AND not already showing
+        if isOver && !showingTierEnforcement {
+            showingTierEnforcement = true
+        } else if !isOver && showingTierEnforcement {
+            showingTierEnforcement = false
+        }
     }
     
     // MARK: - Custom Tab Bar

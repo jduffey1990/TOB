@@ -246,82 +246,11 @@ struct PrayOnItView: View {
 // MARK: - Upgrade View
 
 struct PrayOnItUpgradeView: View {
-    @Environment(\.dismiss) var dismiss
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                Spacer()
-                
-                Image(systemName: "list.bullet.clipboard.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
-                
-                Text("Pray On It Limit Reached")
-                    .font(.system(size: 32, weight: .bold))
-                
-                Text("You've reached your limit. Upgrade to Pro for 10 intention slots or Prayer Warrior for 25!")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                
-                VStack(alignment: .leading, spacing: 16) {
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "20 saved prayers")
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "10 Pray On It items")
-                    FeatureRowOnIt(icon: "checkmark.circle.fill", text: "Premium voice options")
-                }
-                .padding(.horizontal, 40)
-                .padding(.top, 20)
-                
-                Spacer()
-                
-                VStack(spacing: 12) {
-                    Button(action: {
-                        // TODO: Implement actual purchase flow
-                        print("Annual purchase tapped")
-                    }) {
-                        VStack(spacing: 4) {
-                            Text("$9.99/year")
-                                .font(.headline)
-                            Text("Save 50%")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                    }
-                    
-                    Button(action: {
-                        // TODO: Implement actual purchase flow
-                        print("Monthly purchase tapped")
-                    }) {
-                        Text("$1.99/month")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundColor(.blue)
-                            .cornerRadius(12)
-                    }
-                }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 20)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
+       @Environment(\.dismiss) var dismiss
+       var body: some View {
+           UpgradePlaceholderView(reason: .premiumFeature)
+       }
+   }
 
 struct FeatureRowOnIt: View {
     let icon: String
