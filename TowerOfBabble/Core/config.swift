@@ -29,7 +29,7 @@ struct Config {
             // For real device testing, use your computer's local IP (e.g., "http://192.168.1.100:3004")
             return "http://localhost:3004"
         case .production:
-            return "https://mvefj6j1bh.execute-api.us-east-2.amazonaws.com" // 
+            return "https://mvefj6j1bh.execute-api.us-east-2.amazonaws.com" //
         }
     }
     
